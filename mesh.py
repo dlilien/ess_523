@@ -10,6 +10,8 @@
 Define a mesh classes that have info I might want about finite element meshes
 """
 
+#just testing
+
 import numpy as np
 from scipy.linalg import solve,qr,svd,lstsq
 

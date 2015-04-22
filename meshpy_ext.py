@@ -17,3 +17,6 @@ class gmshNumpy(gmsh_reader.GmshMeshReceiverNumPy):
     def __init__(self,fn):
         super(gmshNumpy,self).__init__()
         gmsh_reader.read_gmsh(self,fn)
+    def CreateBases(self):
+        for element in self.elements:
+            
