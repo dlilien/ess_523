@@ -77,13 +77,19 @@ class Element(object):
             ncoords[0].append(ncoords[0][0])
             ncoords[1].append(ncoords[1][0])
         return ncoords[0],ncoords[1]
+
+    def xyvecs(self):
+        """Return xy vectors for use with basis functions etc"""
+        nodes_return=[]
+        for node in self.nodes:
+            nodes_return.append([self.parent.nodes[node].x,self.parent.nodes[node].y])
+        return nodes_return
           
 class TriangElement(Element):
     """A single triangular finite element"""
     kind='Triangular'
     eltypes=2
     
-    @classmethod
     def _F(cls,p1,p2,p3):
         """This guy is useless, but whatever"""
         try:
@@ -92,33 +98,26 @@ class TriangElement(Element):
             print 'Bad points for triangular element'
             return None
 
-    @classmethod
-    def _Finv(cls,p1,p2,p3):
+    def _Finv(self):
         """Map from element to right triangle at origin"""
-        try:
-            return lambda p: solve(np.array([[p2[0]-p1[0],p3[0]-p1[0]],[p2[1]-p1[1],p3[1]-p1[1]]]),np.array(p).reshape((len(p),1))-np.array([[p1[0]],[p1[1]]]))
-        except TypeError:
-            print 'Bad points for triangular element'
-            return None
+        ps=self.xyvecs()
+        return lambda p: solve(np.array([[ps[1][0]-ps[0][0],ps[2][0]-ps[0][0]],[ps[1][1]-ps[0][1],ps[2][1]-ps[0][1]]]),np.array(p).reshape((len(p),1))-np.array([[ps[0][0]],[ps[0][1]]]))
 
-    @classmethod
-    def _b1(cls,Finv):
+    def _b1(self,Finv):
         """Define basis function 1 using map from element to origin"""
         def b1(p):
             Fi=Finv(p)
             return 1-Fi[0]-Fi[1]
         return b1
 
-    @classmethod
-    def _b2(cls,Finv):
+    def _b2(self,Finv):
         """Define basis function 2 using map from element to origin"""
         def b1(p):
             Fi=Finv(p)
             return Fi[0]
         return b1
 
-    @classmethod
-    def _b3(cls,Finv):
+    def _b3(self,Finv):
         """Define basis function 3 using map from element to origin"""
         def b1(p):
             Fi=Finv(p)
@@ -142,23 +141,23 @@ class TriangElement(Element):
         for tag,val in skwargs.items():
             setattr(self,tag,val)
     def _bases(self,*args):
-        Fi=TriangElement._Finv(*args)
-        return [TriangElement._b1(Fi),TriangElement._b2(Fi),TriangElement._b2(Fi)]
-
+        Fi=self._Finv()
+        self.bases=[self._b1(Fi),self._b2(Fi),self._b2(Fi)]
+        return self.bases
 
 class LineElement(Element):
     """A single line finite element"""
     kind='Line'
     eltypes=1
 
-    @classmethod
-    def _b1(cls,x1,x2):
-        return lambda x: x/(float(x2)-x1)
-    @classmethod
-    def _b2(cls,x1,x2):
-        return lambda x: (float(x2)-x)/(x2-x1)
+    def _b1(self,pts):
+        return lambda x: x/(float(pts[1][0])-pts[0][0])
+    def _b2(self,pts):
+        return lambda x: (float(pts[1][0])-x)/(pts[1][0]-pts[0][0])
     def _bases(self,*args):
-        return [LineElement._b1(args[0][0],args[1][0]),LineElement._b2(args[0][0],args[0][0])]
+        pts=self.xyvecs()
+        self.bases=[self._b1(pts),self._b2(pts)]
+        return self.bases
 
     def __init__(self,nodes,ident,parent,skwargs):
         if not len(nodes)==2:
