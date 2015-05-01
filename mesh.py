@@ -13,8 +13,10 @@ Define a mesh classes that have info I might want about finite element meshes
 # just testing
 
 import numpy as np
-from scipy.linalg import solve, qr, svd, lstsq
+from scipy.linalg import solve
+# from scipy.linalg import qr, svd, lstsq
 import matplotlib.pyplot as plt
+
 
 
 def main():
@@ -30,8 +32,9 @@ class Node:
     """A node with x,y,z coordinates"""
     _curr_id = 0
 
-    def __init__(self, x, y, z=0.0, ident=None):
+    def __init__(self, x, y, z=0.0, ident=None, parent=None):
         self.ass_elms = []
+        self.parent=parent
         self.x = float(x)
         self.y = float(y)
         self.z = float(z)
@@ -42,8 +45,9 @@ class Node:
             self.id = Node._curr_id
             Node._curr_id += 1
 
-    def add_elm(self, elm):
-        self.ass_elms.append(elm)
+    def add_elm(self, elm, pos):
+        """Add an element using this node, with this as the pos'th node"""
+        self.ass_elms.append([elm,pos])
 
     def coords(self):
         return [self.x, self.y, self.z]
@@ -224,7 +228,7 @@ class Mesh:
         if self.bases:
             string += 'Bases formed'
         else:
-            strin += 'No Bases Associated'
+            string += 'No Bases Associated'
         return string
 
     def loadgmsh(self, fn):
@@ -235,7 +239,7 @@ class Mesh:
             return False
         self.types = map(float, flines[1].split())
         self.numnodes = int(flines[4])
-        self.nodes = {int(line[0]): Node(*map(float, line[1:4]), ident=int(line[0]))
+        self.nodes = {int(line[0]): Node(*map(float, line[1:4]), ident=int(line[0]),parent=self)
                       for line in map(str.split, flines[5:(5 + self.numnodes)])}
         if not flines[self.numnodes + 6] == '$Elements\n':
             print 'Unrecognized msh file'
@@ -256,8 +260,8 @@ class Mesh:
                     paramlist[param].append(key)
                 except AttributeError:
                     pass
-            for node in self.elements[key].nodes:
-                self.nodes[node].add_elm(key)
+            for pos,node in enumerate(self.elements[key].nodes):
+                self.nodes[node].add_elm(key,pos)
         flines = None
 
     def CreateBases(self):
