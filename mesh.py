@@ -34,7 +34,8 @@ class Node:
 
     def __init__(self, x, y, z=0.0, ident=None, parent=None):
         self.ass_elms = []
-        self.parent=parent
+        self.neighbors = {} # Dictionary of nodes and the connecting elements
+        self.parent = parent
         self.x = float(x)
         self.y = float(y)
         self.z = float(z)
@@ -45,16 +46,26 @@ class Node:
             self.id = Node._curr_id
             Node._curr_id += 1
 
-    def add_elm(self, elm, pos):
-        """Add an element using this node, with this as the pos'th node"""
-        self.ass_elms.append([elm,pos])
-
-    def coords(self):
-        return [self.x, self.y, self.z]
-
     def __str__(self):
         return 'Node number ' + str(self.id) + 'at (' + str(self.x) + ',' + str(self.y) + ',' + str(self.z) + ')\nAssociate with elements ' + ', '.join(map(str, self.ass_elms))
 
+    def add_elm(self, elm, pos):
+        """Add an element using this node, with this as the pos'th node"""
+        for node in self.parent.elements[elm].nodes:
+            if node != self.id:
+                if node not in self.neighbors.keys():
+                    self.neighbors[node]=[elm]
+                else:
+                    self.neighbors[node].append(elm)
+        self.ass_elms.append([elm,pos])
+
+    def coords(self):
+        """Convenience wrapper for coordinates"""
+        return [self.x, self.y, self.z]
+
+    def form_basis(self):
+        """Write something to note which basis functions are associated?"""
+        pass
 
 class Element(object):
 
@@ -162,7 +173,7 @@ class TriangElement(Element):
         for tag, val in skwargs.items():
             setattr(self, tag, val)
 
-    def _bases(self, *args):
+    def _bases(self):
         Fi = self._Finv()
         self.bases = [self._b1(Fi), self._b2(Fi), self._b2(Fi)]
         return self.bases
@@ -268,9 +279,8 @@ class Mesh:
         """Create the finite element basis functions"""
         self.bases = {}
         for number, element in self.elements.items():
-            ps = [self.nodes[i].coords() for i in element.nodes]
             self.bases[number] = {
-                i: fnctn for i, fnctn in enumerate(element._bases(*ps))}
+                i: fnctn for i, fnctn in enumerate(element._bases())}
 
     def PlotBorder(self, show=False, writefile=None):
         plt.figure(1)
