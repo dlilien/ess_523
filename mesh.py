@@ -14,6 +14,7 @@ Define a mesh classes that have info I might want about finite element meshes
 
 import numpy as np
 from scipy.linalg import solve
+from scipy.sparse import csc_matrix
 # from scipy.linalg import qr, svd, lstsq
 import matplotlib.pyplot as plt
 
@@ -21,10 +22,12 @@ import matplotlib.pyplot as plt
 
 def main():
     """A callable version for debugging"""
-    m = Mesh()
-    m.loadgmsh('roughshear_bl.msh')
-    m.CreateBases()
-    return m
+    tm = Mesh()
+    tm.loadgmsh('roughshear_bl.msh')
+    tm.CreateBases()
+    tm.MakeMatrix()
+    plt.spy(tm.matrix)
+    return tm
 
 
 class Node:
@@ -134,6 +137,7 @@ class TriangElement(Element):
     def _Finv(self):
         """Map from element to right triangle at origin"""
         ps = self.xyvecs()
+        self.area=abs((ps[1][0] - ps[0][0])*( ps[2][1] - ps[0][1] )-(ps[2][0] - ps[0][0])*( ps[1][1] - ps[0][1] ))/2.0
         return lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape((len(p), 1)) - np.array([[ps[0][0]], [ps[0][1]]]))
 
     def _b1(self, Finv):
@@ -173,6 +177,8 @@ class TriangElement(Element):
         self.eltypes = TriangElement.eltypes
         for tag, val in skwargs.items():
             setattr(self, tag, val)
+        ps=self.xyvecs()
+        self.cent=[(ps[0][0]+ps[1][0]+ps[2][0])/3.0,(ps[0][1]+ps[1][1]+ps[2][1])/3]
 
     def _bases(self):
         Fi = self._Finv()
@@ -282,10 +288,47 @@ class Mesh:
         for number, element in self.elements.items():
             self.bases[number] = {
                 i: fnctn for i, fnctn in enumerate(element._bases())}
+    
+    def MakeMatrix(self,equation='area',max_nei=8):
+        """Make the matrix form, max_nei is the most neighbors/element"""
+        # We can ignore trailing zeros as long as we allocate space
+        # I.e. go big with max_nei
+        rows=np.zeros(max_nei*self.numnodes,dtype=np.int16)
+        cols=np.zeros(max_nei*self.numnodes,dtype=np.int16)
+        data=np.zeros(max_nei*self.numnodes)
+        nnz=0
+        for i,node1 in self.nodes.items():
+            rows[nnz]=i-1 #TODO
+            cols[nnz]=i-1 #TODO
+            if equation=='area':
+                data[nnz]=np.sum([self.elements[elm[0]].area for elm in node1.ass_elms if self.elements[elm[0]].eltypes==2]) #TODO fix indexing
+            else:
+                print 'Bad equation name'
+                break
+            nnz += 1
+            for j,node2_els in node1.neighbors.items():
+                rows[nnz]=i-1 #TODO
+                cols[nnz]=j-1 #TODO
+                if equation=='area':
+                    data[nnz]=np.sum([self.elements[nei_el].area for nei_el in node2_els if self.elements[nei_el].eltypes==2]) #TODO fix indexing
+                else:
+                    break
+                nnz += 1
+                
 
-    def PlotBorder(self, show=False, writefile=None, axis=None):
+        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.numnodes,self.numnodes)) #TODO fix indexing
+
+
+
+
+        
+
+    def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""
-        plt.figure(1)
+        if fignum is not None:
+            plt.figure(fignum)
+        else:
+            plt.figure()
         colors = ['b', 'k', 'r', 'c', 'g', 'm', 'darkred', 'darkgreen',
                   'darkslategray', 'saddlebrown', 'darkorange', 'darkmagenta', 'y']
         plot_these = np.sort(self.physents.keys())[0:-1]
@@ -306,9 +349,12 @@ class Mesh:
         if writefile is not None:
             plt.savefig(writefile)
 
-    def PlotMesh(self, show=False, writefile=None, axis=None):
+    def PlotMesh(self, show=False, writefile=None, axis=None, labels=None, fignum=None):
         """Plot out the whole interior mesh structure"""
-        plt.figure(2)
+        if fignum is not None:
+            plt.figure(fignum)
+        else:
+            plt.figure()
         plot_these = self.physents.keys()
         plt_lines = {key: None for key in plot_these}
         for i, key in enumerate(plot_these):
@@ -317,6 +363,12 @@ class Mesh:
                         *self.elements[element].pvecs(), color = 'b')
         if axis is not None:
             plt.axis(axis)
+        if labels=='area':
+            for eln in self.eltypes[2]:
+                plt.text(self.elements[eln].cent[0],self.elements[eln].cent[1],'%1.1f' % self.elements[eln].area)
+        elif labels=='number':
+            for eln in self.eltypes[2]:
+                plt.text(self.elements[eln].cent[0],self.elements[eln].cent[1],'%d' % eln)
         if show:
             plt.show()
         if writefile is not None:
