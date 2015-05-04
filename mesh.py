@@ -67,6 +67,7 @@ class Node:
         """Write something to note which basis functions are associated?"""
         pass
 
+
 class Element(object):
 
     """A single finite element, of given type"""
@@ -282,7 +283,8 @@ class Mesh:
             self.bases[number] = {
                 i: fnctn for i, fnctn in enumerate(element._bases())}
 
-    def PlotBorder(self, show=False, writefile=None):
+    def PlotBorder(self, show=False, writefile=None, axis=None):
+        """Plot out the border of the mesh with different colored borders"""
         plt.figure(1)
         colors = ['b', 'k', 'r', 'c', 'g', 'm', 'darkred', 'darkgreen',
                   'darkslategray', 'saddlebrown', 'darkorange', 'darkmagenta', 'y']
@@ -297,6 +299,24 @@ class Mesh:
                     plt.plot(*self.elements[element].pvecs(), color=colors[i])
         plt.legend(
             plt_lines.values(), ['Border ' + num for num in map(str, plot_these)])
+        if axis is not None:
+            plt.axis(axis)
+        if show:
+            plt.show()
+        if writefile is not None:
+            plt.savefig(writefile)
+
+    def PlotMesh(self, show=False, writefile=None, axis=None):
+        """Plot out the whole interior mesh structure"""
+        plt.figure(2)
+        plot_these = self.physents.keys()
+        plt_lines = {key: None for key in plot_these}
+        for i, key in enumerate(plot_these):
+            for element in self.physents[key]:
+                plt_lines[key], = plt.plot(
+                        *self.elements[element].pvecs(), color = 'b')
+        if axis is not None:
+            plt.axis(axis)
         if show:
             plt.show()
         if writefile is not None:

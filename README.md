@@ -1,7 +1,7 @@
 # ess_523
 
-Class project for inverse theory.
-
 Some finite element mesh tools.
 
-Sloppy.
+This will actually branch into two class projects...
+
+Pretty sloppy.
