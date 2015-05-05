@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2015 dlilien <dal22@uw.edu>
+# Copyright © 2015 David Lilien <dal22@uw.edu>
 #
 # Distributed under terms of the MIT license.
 
@@ -10,12 +10,8 @@
 Define a mesh classes that have info I might want about finite element meshes
 """
 
-# just testing
-
 import numpy as np
 from scipy.linalg import solve
-from scipy.sparse import csc_matrix
-# from scipy.linalg import qr, svd, lstsq
 import matplotlib.pyplot as plt
 
 
@@ -23,10 +19,11 @@ import matplotlib.pyplot as plt
 def main():
     """A callable version for debugging"""
     tm = Mesh()
-    tm.loadgmsh('roughshear_bl.msh')
+    tm.loadgmsh('testmesh.msh')
     tm.CreateBases()
     tm.MakeMatrix()
     plt.spy(tm.matrix)
+    plt.savefig('spy.eps')
     return tm
 
 
@@ -288,40 +285,6 @@ class Mesh:
         for number, element in self.elements.items():
             self.bases[number] = {
                 i: fnctn for i, fnctn in enumerate(element._bases())}
-    
-    def MakeMatrix(self,equation='area',max_nei=8):
-        """Make the matrix form, max_nei is the most neighbors/element"""
-        # We can ignore trailing zeros as long as we allocate space
-        # I.e. go big with max_nei
-        rows=np.zeros(max_nei*self.numnodes,dtype=np.int16)
-        cols=np.zeros(max_nei*self.numnodes,dtype=np.int16)
-        data=np.zeros(max_nei*self.numnodes)
-        nnz=0
-        for i,node1 in self.nodes.items():
-            rows[nnz]=i-1 #TODO
-            cols[nnz]=i-1 #TODO
-            if equation=='area':
-                data[nnz]=np.sum([self.elements[elm[0]].area for elm in node1.ass_elms if self.elements[elm[0]].eltypes==2]) #TODO fix indexing
-            else:
-                print 'Bad equation name'
-                break
-            nnz += 1
-            for j,node2_els in node1.neighbors.items():
-                rows[nnz]=i-1 #TODO
-                cols[nnz]=j-1 #TODO
-                if equation=='area':
-                    data[nnz]=np.sum([self.elements[nei_el].area for nei_el in node2_els if self.elements[nei_el].eltypes==2]) #TODO fix indexing
-                else:
-                    break
-                nnz += 1
-                
-
-        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.numnodes,self.numnodes)) #TODO fix indexing
-
-
-
-
-        
 
     def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""
