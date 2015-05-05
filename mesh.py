@@ -122,6 +122,7 @@ class TriangElement(Element):
     """A single triangular finite element"""
     kind = 'Triangular'
     eltypes = 2
+    gpoints=[[-27.0/96.0, 1.0/3.0, 1.0/3.0], [25.0/96.0, 0.2, 0.6], [25.0/96.0, 0.6, 0.2], [25.0/96.0, 0.2, 0.2]] #gauss points with weights for parent element
 
     def _F(cls, p1, p2, p3):
         """This guy is useless, but whatever"""
@@ -182,12 +183,16 @@ class TriangElement(Element):
         self.bases = [self._b1(Fi), self._b2(Fi), self._b2(Fi)]
         return self.bases
 
+    def gpts(self):
+        return [(pt[0],self._Finv(pt[1:2])) for pt in self.gpoints]
+
 
 class LineElement(Element):
 
     """A single line finite element"""
     kind = 'Line'
     eltypes = 1
+    gpoints = [ [0.5, (1.0-1.0/np.sqrt(3.0))/2.0, 0], [0.5, (1.0+1.0/np.sqrt(3.0))/2.0, 0]]
 
     def _b1(self, pts):
         return lambda x: x / (float(pts[1][0]) - pts[0][0])
