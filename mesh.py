@@ -116,6 +116,9 @@ class Element(object):
                 [self.parent.nodes[node].x, self.parent.nodes[node].y])
         return nodes_return
 
+    def _gpts(self):
+        """A function to return the gauss points. I use 4 for 2d, 2 for 1d"""
+        self.gpts=[(pt[0],self._Finv()(pt[1:3])) for pt in self.gpoints]
 
 class TriangElement(Element):
 
@@ -125,7 +128,7 @@ class TriangElement(Element):
     gpoints=[[-27.0/96.0, 1.0/3.0, 1.0/3.0], [25.0/96.0, 0.2, 0.6], [25.0/96.0, 0.6, 0.2], [25.0/96.0, 0.2, 0.2]] #gauss points with weights for parent element
 
     def _F(cls, p1, p2, p3):
-        """This guy is useless, but whatever"""
+        """Right triangle to element mapping"""
         try:
             return lambda p: np.dot(np.array([[p2[0] - p1[0], p3[0] - p1[0]], [p2[1] - p1[1], p3[1] - p1[1]]]), np.array(p).reshape((len(p), 1)) - np.array([[p1[0]], [p1[1]]]))
         except TypeError:
@@ -183,8 +186,12 @@ class TriangElement(Element):
         self.bases = [self._b1(Fi), self._b2(Fi), self._b2(Fi)]
         return self.bases
 
-    def gpts(self):
-        return [(pt[0],self._Finv(pt[1:2])) for pt in self.gpoints]
+    def _dbases(self):
+        pts=self.xyvecs()
+        self.dbases = [self.bases[0](pts[0]+np.array([[1.0],[1.0]])),self.bases[1](pts[1]+np.array([[1.0],[1.0]])),self.bases[2](pts[2]+np.array([[1.0],[1.0]]))]
+        return self.dbases
+
+
 
 
 class LineElement(Element):
@@ -193,6 +200,10 @@ class LineElement(Element):
     kind = 'Line'
     eltypes = 1
     gpoints = [ [0.5, (1.0-1.0/np.sqrt(3.0))/2.0, 0], [0.5, (1.0+1.0/np.sqrt(3.0))/2.0, 0]]
+
+    def _Finv(self):
+        pts=self.xyvecs()
+        return lambda p: np.array([[pts[0][0]+(pts[0][0]-pts[1][0])*p[0]],[pts[0][1]+(pts[0][1]-pts[1][1])*p[0]]])
 
     def _b1(self, pts):
         return lambda x: x / (float(pts[1][0]) - pts[0][0])
@@ -204,6 +215,11 @@ class LineElement(Element):
         pts = self.xyvecs()
         self.bases = [self._b1(pts), self._b2(pts)]
         return self.bases
+
+    def _dbases(self):
+        pts=self.xyvecs()
+        self.dbases= [self.bases[0](pts[0]+np.array([[1.0],[1.0]])),self.bases[1](pts[1]+np.array([[1.0],[1.0]]))]
+        return self.dbases
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 2:
@@ -284,12 +300,22 @@ class Mesh:
                 self.nodes[node].add_elm(key,pos)
         flines = None
 
-    def CreateBases(self):
+    def CreateBases(self,gpts=True):
         """Create the finite element basis functions"""
         self.bases = {}
-        for number, element in self.elements.items():
-            self.bases[number] = {
-                i: fnctn for i, fnctn in enumerate(element._bases())}
+        if gpts:
+            for number, element in self.elements.items():
+                self.bases[number] = {
+                    i: fnctn for i, fnctn in enumerate(element._bases())}
+                self.dbases[number] = {
+                    i: fnctn for i, fnctn in enumerate(element._dbases())}
+                element._gpts()
+        else:
+            for number, element in self.elements.items():
+                self.bases[number] = {
+                    i: fnctn for i, fnctn in enumerate(element._bases())}
+                self.dbases[number] = {
+                    i: fnctn for i, fnctn in enumerate(element._dbases())}
 
     def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""

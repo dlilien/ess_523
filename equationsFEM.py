@@ -16,4 +16,13 @@ def area(**kwargs):
     """This is really just for testing. Calculate area"""
     return np.sum(kwargs['areas'])
 
+def diffusion(**kwargs):
+    """Let's solve the diffusion equation"""
+    if 'k' in kwargs.keys():
+        k=kwargs['k']
+    else:
+        k=lambda x: 1
+    
+
+
 
