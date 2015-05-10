@@ -22,7 +22,9 @@ def diffusion(**kwargs):
         k=kwargs['k']
     else:
         k=lambda x: 1
-    
+    return np.sum(k)
+
+        
 
 
 

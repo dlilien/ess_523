@@ -13,7 +13,8 @@ A class to do operations on meshes (form fem matrix, solve things?)
 import numpy as np
 from scipy.sparse import csc_matrix
 import equationsFEM
-# import mesh
+import mesh
+import matplotlib.pyplot as plt
 
 
 def MakeMatrix(mesh,eqn=equationsFEM.area,max_nei=8):
@@ -37,5 +38,31 @@ def MakeMatrix(mesh,eqn=equationsFEM.area,max_nei=8):
             data[nnz]=eqn(areas=[mesh.elements[nei_el].area for nei_el in node2_els if mesh.elements[nei_el].eltypes==2],bases=None,dbases=None,gpoints=None) #TODO fix indexing, bases
             nnz += 1
     mesh.matrix=csc_matrix((data,(rows,cols)),shape=(mesh.numnodes,mesh.numnodes)) #TODO fix indexing
+
+def main():
+    """A callable version for debugging"""
+    tm = mesh.Mesh()
+    tm.loadgmsh('testmesh.msh')
+    tm.CreateBases()
+    MakeMatrix(tm)
+    plt.savefig('spy.eps')
+    return tm
+
+def checkBases(me):
+    """Just a quick check that the basis functions are zero and 1 where they should be"""
+    badn=0
+    for element in me.elements.values():
+        for i,pt in enumerate(element.xyvecs()):
+            if abs(element.bases[i](pt)-1)>1e-15:
+                print 'Bad element ',element.id,'basis ',i
+                badn+=1
+    if badn==0:
+        print 'Bases are good'
+
+
+
+if __name__=='__main__':
+    main()
+
 
 

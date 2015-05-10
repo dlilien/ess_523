@@ -21,8 +21,6 @@ def main():
     tm = Mesh()
     tm.loadgmsh('testmesh.msh')
     tm.CreateBases()
-    tm.MakeMatrix()
-    plt.spy(tm.matrix)
     plt.savefig('spy.eps')
     return tm
 
@@ -66,7 +64,6 @@ class Node:
     def form_basis(self):
         """Write something to note which basis functions are associated?"""
         pass
-
 
 class Element(object):
 
@@ -130,7 +127,7 @@ class TriangElement(Element):
     def _F(cls, p1, p2, p3):
         """Right triangle to element mapping"""
         try:
-            return lambda p: np.dot(np.array([[p2[0] - p1[0], p3[0] - p1[0]], [p2[1] - p1[1], p3[1] - p1[1]]]), np.array(p).reshape((len(p), 1)) - np.array([[p1[0]], [p1[1]]]))
+            return lambda p: np.dot(np.array([[p2[0] - p1[0], p3[0] - p1[0]], [p2[1] - p1[1], p3[1] - p1[1]]]), np.array(p).reshape(len(p), 1) - np.array([[p1[0]], [p1[1]]]))
         except TypeError:
             print 'Bad points for triangular element'
             return None
@@ -139,13 +136,13 @@ class TriangElement(Element):
         """Map from element to right triangle at origin"""
         ps = self.xyvecs()
         self.area=abs((ps[1][0] - ps[0][0])*( ps[2][1] - ps[0][1] )-(ps[2][0] - ps[0][0])*( ps[1][1] - ps[0][1] ))/2.0
-        return lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape((len(p), 1)) - np.array([[ps[0][0]], [ps[0][1]]]))
+        return lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape(len(p), 1) - np.array([[ps[0][0]], [ps[0][1]]]))
 
     def _b1(self, Finv):
         """Define basis function 1 using map from element to origin"""
         def b1(p):
             Fi = Finv(p)
-            return 1 - Fi[0] - Fi[1]
+            return 1-Fi[0]-Fi[1]
         return b1
 
     def _b2(self, Finv):
@@ -183,16 +180,13 @@ class TriangElement(Element):
 
     def _bases(self):
         Fi = self._Finv()
-        self.bases = [self._b1(Fi), self._b2(Fi), self._b2(Fi)]
+        self.bases = [self._b1(Fi), self._b2(Fi), self._b3(Fi)]
         return self.bases
 
     def _dbases(self):
         pts=self.xyvecs()
-        self.dbases = [self.bases[0](pts[0]+np.array([[1.0],[1.0]])),self.bases[1](pts[1]+np.array([[1.0],[1.0]])),self.bases[2](pts[2]+np.array([[1.0],[1.0]]))]
+        self.dbases = [[self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))],[self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[1.0],[0.0]])),self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[0.0],[1.0]]))],[self.bases[2](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[2](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))]]
         return self.dbases
-
-
-
 
 class LineElement(Element):
 
@@ -205,11 +199,17 @@ class LineElement(Element):
         pts=self.xyvecs()
         return lambda p: np.array([[pts[0][0]+(pts[0][0]-pts[1][0])*p[0]],[pts[0][1]+(pts[0][1]-pts[1][1])*p[0]]])
 
-    def _b1(self, pts):
-        return lambda x: x / (float(pts[1][0]) - pts[0][0])
-
     def _b2(self, pts):
-        return lambda x: (float(pts[1][0]) - x) / (pts[1][0] - pts[0][0])
+        if pts[1][0]==pts[0][0]:
+            return lambda x: (x[1]-float(pts[0][1]))/(float(pts[1][1]) - pts[0][1])
+        else:
+            return lambda x: (x[0]-float(pts[0][0]))/(float(pts[1][0]) - pts[0][0])
+
+    def _b1(self, pts):
+        if pts[1][0]==pts[0][0]:
+            return lambda x: (float(pts[1][1]) - x[1]) / (pts[1][1] - pts[0][1])
+        else:
+            return lambda x: (float(pts[1][0]) - x[0]) / (pts[1][0] - pts[0][0])
 
     def _bases(self, *args):
         pts = self.xyvecs()
@@ -218,7 +218,7 @@ class LineElement(Element):
 
     def _dbases(self):
         pts=self.xyvecs()
-        self.dbases= [self.bases[0](pts[0]+np.array([[1.0],[1.0]])),self.bases[1](pts[1]+np.array([[1.0],[1.0]]))]
+        self.dbases= [[self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))],[self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[1.0],[0.0]])),self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[0.0],[1.0]]))]]
         return self.dbases
 
     def __init__(self, nodes, ident, parent, skwargs):
@@ -303,6 +303,7 @@ class Mesh:
     def CreateBases(self,gpts=True):
         """Create the finite element basis functions"""
         self.bases = {}
+        self.dbases = {}
         if gpts:
             for number, element in self.elements.items():
                 self.bases[number] = {
