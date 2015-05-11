@@ -30,7 +30,7 @@ def MakeMatrix(mesh,eqn=equationsFEM.area,max_nei=8):
     for i,node1 in mesh.nodes.items():
         rows[nnz]=i-1 #TODO
         cols[nnz]=i-1 #TODO
-        data[nnz]=eqn(areas=[mesh.elements[elm[0]].area for elm in node1.ass_elms if mesh.elements[elm[0]].eltypes==2],bases=None,dbases=None,gpoints=None) #TODO fix indexing, bases
+        data[nnz]=eqn(areas=[mesh.elements[elm[0]] for elm in node1.ass_elms if mesh.elements[elm[0]].eltypes==2],bases=None,dbases=None,gpoints=None) #TODO fix indexing, bases
         nnz += 1
         for j,node2_els in node1.neighbors.items():
             rows[nnz]=i-1 #TODO
