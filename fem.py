@@ -17,7 +17,7 @@ import mesh
 import matplotlib.pyplot as plt
 
 
-def MakeMatrix(mesh,eqn=equationsFEM.area,max_nei=8):
+def MakeMatrixEQ(mesh,eqn=equationsFEM.diffusion,max_nei=8,**kwargs):
     """Make the matrix form, max_nei is the most neighbors/element"""
     # We can ignore trailing zeros as long as we allocate space
     # I.e. go big with max_nei
@@ -26,25 +26,28 @@ def MakeMatrix(mesh,eqn=equationsFEM.area,max_nei=8):
     rows=np.zeros(max_nei*mesh.numnodes,dtype=np.int16)
     cols=np.zeros(max_nei*mesh.numnodes,dtype=np.int16)
     data=np.zeros(max_nei*mesh.numnodes)
+    rhs=np.zeros(mesh.numnodes)
     nnz=0
     for i,node1 in mesh.nodes.items():
         rows[nnz]=i-1 #TODO
         cols[nnz]=i-1 #TODO
-        data[nnz]=eqn(areas=[mesh.elements[elm[0]] for elm in node1.ass_elms if mesh.elements[elm[0]].eltypes==2],bases=None,dbases=None,gpoints=None) #TODO fix indexing, bases
+        data[nnz],rhs[i-1]=eqn(i,i,[(elm[0],mesh.elements[elm[0]]) for elm in node1.ass_elms if mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=kwargs) #TODO fix indexing, bases
         nnz += 1
         for j,node2_els in node1.neighbors.items():
             rows[nnz]=i-1 #TODO
             cols[nnz]=j-1 #TODO
-            data[nnz]=eqn(areas=[mesh.elements[nei_el].area for nei_el in node2_els if mesh.elements[nei_el].eltypes==2],bases=None,dbases=None,gpoints=None) #TODO fix indexing, bases
+            data[nnz]=eqn(i,j,[(1,mesh.elements[nei_el]) for nei_el in node2_els if mesh.elements[nei_el].eltypes==2],max_nei=max_nei) #TODO fix indexing, bases, the 1!!!!!
             nnz += 1
     mesh.matrix=csc_matrix((data,(rows,cols)),shape=(mesh.numnodes,mesh.numnodes)) #TODO fix indexing
+    mesh.rhs=rhs
 
 def main():
     """A callable version for debugging"""
     tm = mesh.Mesh()
     tm.loadgmsh('testmesh.msh')
     tm.CreateBases()
-    MakeMatrix(tm)
+    MakeMatrixEQ(tm,f=lambda x:1.0)
+    plt.spy(tm.matrix)
     plt.savefig('spy.eps')
     return tm
 

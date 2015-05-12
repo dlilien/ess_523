@@ -124,19 +124,22 @@ class TriangElement(Element):
     eltypes = 2
     gpoints=[[-27.0/96.0, 1.0/3.0, 1.0/3.0], [25.0/96.0, 0.2, 0.6], [25.0/96.0, 0.6, 0.2], [25.0/96.0, 0.2, 0.2]] #gauss points with weights for parent element
 
-    def _F(cls, p1, p2, p3):
+    def _F(self):
         """Right triangle to element mapping"""
-        try:
-            return lambda p: np.dot(np.array([[p2[0] - p1[0], p3[0] - p1[0]], [p2[1] - p1[1], p3[1] - p1[1]]]), np.array(p).reshape(len(p), 1) - np.array([[p1[0]], [p1[1]]]))
-        except TypeError:
-            print 'Bad points for triangular element'
-            return None
+        if self.F is None:
+            ps=self.xyvecs()
+            self.F=lambda p: np.dot([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]],np.array(p).reshape(len(p), 1))+np.array([[ps[0][0]], [ps[0][1]]])
+        return self.F
+
 
     def _Finv(self):
         """Map from element to right triangle at origin"""
-        ps = self.xyvecs()
-        self.area=abs((ps[1][0] - ps[0][0])*( ps[2][1] - ps[0][1] )-(ps[2][0] - ps[0][0])*( ps[1][1] - ps[0][1] ))/2.0
-        return lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape(len(p), 1) - np.array([[ps[0][0]], [ps[0][1]]]))
+        if self.Finv is None:
+            ps = self.xyvecs()
+            self.area=abs((ps[1][0] - ps[0][0])*( ps[2][1] - ps[0][1] )-(ps[2][0] - ps[0][0])*( ps[1][1] - ps[0][1] ))/2.0
+            self.Finv=lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape(len(p), 1) - np.array([[ps[0][0]], [ps[0][1]]]))
+        return self.Finv
+
 
     def _b1(self, Finv):
         """Define basis function 1 using map from element to origin"""
@@ -169,6 +172,8 @@ class TriangElement(Element):
         else:
             self.id = Element._curr_id
             Element._curr_id += 1
+        self.F=None
+        self.Finv=None
         self.parent = parent
         self.nodes = nodes
         self.kind = TriangElement.kind
@@ -179,8 +184,9 @@ class TriangElement(Element):
         self.cent=[(ps[0][0]+ps[1][0]+ps[2][0])/3.0,(ps[0][1]+ps[1][1]+ps[2][1])/3]
 
     def _bases(self):
-        Fi = self._Finv()
-        self.bases = [self._b1(Fi), self._b2(Fi), self._b3(Fi)]
+        self._Finv()
+        self._F()
+        self.bases = [self._b1(self.Finv), self._b2(self.Finv), self._b3(self.Finv)]
         return self.bases
 
     def _dbases(self):
