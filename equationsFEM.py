@@ -34,11 +34,6 @@ def diffusion(node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
             f=lambda x:0.0
         ints_rhs=np.zeros((max_nei,))
         for i,elm in enumerate(elements):
-            for gp in elm[1].gpoints:
-                print 'n1b,n2b',n1b,n2b
-                print 'f ',f(gp[1:])
-                print 'weight ',gp[0]
-                print 'value ',elm[1].bases[n1b](elm[1].F(gp[1:]))
             ints_rhs[i]=elm[1].area*np.sum([gp[0]*elm[1].bases[n1b](elm[1].F(gp[1:]))*f(elm[1].F(gp[1:])) for gp in elm[1].gpoints])
         return np.sum(ints),np.sum(ints_rhs)
     else:

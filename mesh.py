@@ -59,7 +59,7 @@ class Node:
 
     def coords(self):
         """Convenience wrapper for coordinates"""
-        return [self.x, self.y, self.z]
+        return np.array([self.x, self.y, self.z])
 
     def form_basis(self):
         """Write something to note which basis functions are associated?"""
@@ -305,6 +305,7 @@ class Mesh:
             for pos,node in enumerate(self.elements[key].nodes):
                 self.nodes[node].add_elm(key,pos)
         flines = None
+        self.coords=np.r_[[node.coords()[0:-1] for node in self.nodes.values()]]
 
     def CreateBases(self,gpts=True):
         """Create the finite element basis functions"""
