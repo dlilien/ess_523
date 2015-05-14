@@ -139,9 +139,9 @@ def applyNeumann(Mesh,edge_nodes,function,normal=True): #TODO make non-normal st
                 for el in els:
                     if Mesh.elements[el].kind=='Line':
                         print(node,' connected to ',j,' with edge ',el)
-                        self_ind=Mesh.elements[el].index(node)
-                        nei_ind=Mesh.elements[el].index(j)
-                        ints[i]=el#TODO
+                        self_ind=Mesh.elements[el].nodes.index(node)
+                        nei_ind=Mesh.elements[el].nodes.index(j)
+                        ints[i]=el#TODO actually calculate integral
                         i+=1
 
 

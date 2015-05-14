@@ -140,6 +140,10 @@ class TriangElement(Element):
             self.Finv=lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape(len(p), 1) - np.array([[ps[0][0]], [ps[0][1]]]))
         return self.Finv
 
+    def _normal(self):
+        """Dummy to be lazy"""
+        pass
+
 
     def _b1(self, Finv):
         """Define basis function 1 using map from element to origin"""
@@ -219,6 +223,7 @@ class LineElement(Element):
 
     def _bases(self, *args):
         pts = self.xyvecs()
+        self.length=np.sqrt(np.sum([(pts[0][i]-pts[1][i])**2 for i in range(len(pts[0]))]))
         self.bases = [self._b1(pts), self._b2(pts)]
         return self.bases
 
@@ -226,6 +231,11 @@ class LineElement(Element):
         pts=self.xyvecs()
         self.dbases= [[self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))],[self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[1.0],[0.0]])),self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[0.0],[1.0]]))]]
         return self.dbases
+
+    def _normal(self):
+        pts=self.xyvecs()
+        self.normal=np.array([pts[1][1]-pts[0][1],pts[1][0]-pts[0][0]])/self.length
+        return self.normal
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 2:
@@ -307,7 +317,7 @@ class Mesh:
         flines = None
         self.coords=np.r_[[node.coords()[0:-1] for node in list(self.nodes.values())]]
 
-    def CreateBases(self,gpts=True):
+    def CreateBases(self,gpts=True,normals=True):
         """Create the finite element basis functions"""
         self.bases = {}
         self.dbases = {}
@@ -318,12 +328,18 @@ class Mesh:
                 self.dbases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._dbases())}
                 element._gpts()
+                if normals:
+                    element._normal()
         else:
             for number, element in list(self.elements.items()):
                 self.bases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._bases())}
                 self.dbases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._dbases())}
+                element._gpts()
+                if normals:
+                    element._normal()
+
 
     def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""
