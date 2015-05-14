@@ -16,8 +16,10 @@ from scipy.sparse.linalg import bicgstab,cg,spsolve
 import equationsFEM
 import mesh
 import matplotlib.pyplot as plt
-#from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
 from warnings import warn
+Axes3D
 
 
 def main():
@@ -65,31 +67,31 @@ def applyBCs(Mesh,dirichlet=[],neumann=[],b_funcs={}):
     # Just wrap Neumann and Dirichlet methods and add some error checking
 
     # Let's do some checking/warning about our inputs
-    edges = np.sort(Mesh.physents.keys())[0:-1]
+    edges = np.sort(list(Mesh.physents.keys()))[0:-1]
     listed_edges=np.sort(dirichlet+neumann)
     if not all(edges==listed_edges):
         warn('Error with borders')
         for edge in listed_edges:
             if not edge in edges:
-                print 'You list a non existent border '+str(edge)+' in types'
-                print 'Available borders are ',edges
+                print('You list a non existent border '+str(edge)+' in types')
+                print('Available borders are ',edges)
                 raise ValueError('Unknown border')
         else:
-            print 'Some border not specified in types, taking Neumann'
-            print 'Borders are ',edges,' listed are ',listed_edges
+            print('Some border not specified in types, taking Neumann')
+            print('Borders are ',edges,' listed are ',listed_edges)
 
 
     # minor checking which we will warn but ignore
-    if not all(edges==np.sort(b_funcs.keys())):
+    if not all(edges==np.sort(list(b_funcs.keys()))):
         warn('Error with borders')
-        for edge in b_funcs.keys():
+        for edge in list(b_funcs.keys()):
             if not edge in edges:
-                print 'You list a non existent border '+str(edge)+' in types'
-                print 'Available borders are ',edges
+                print('You list a non existent border '+str(edge)+' in types')
+                print('Available borders are ',edges)
                 raise ValueError ('Unknown border')
         else:
-            print 'Some border not specified in types, taking equal to zero'
-            print 'Borders are ',edges,' listed are ',b_funcs.keys()
+            print('Some border not specified in types, taking equal to zero')
+            print('Borders are ',edges,' listed are ',b_funcs.keys())
 
     # Ok, hopefully we have parse-able input now
     edge_nodes={} # Figure out which nodes are associated with each boundary
@@ -109,7 +111,7 @@ def applyBCs(Mesh,dirichlet=[],neumann=[],b_funcs={}):
 
     for edge in neumann:
         try:
-            applyNeumann(Mesh,edge_nodes[edge],b_funcs[edge])
+            applyNeumann(Mesh,edge_nodes[edge],b_funcs[edge],normal=True)
         except KeyError: # If we have no condition we are just taking 0 neumann
             pass
 
@@ -126,9 +128,22 @@ def applyDirichlet(Mesh,edge_nodes,function):
             Mesh.matrix[j-1,node-1]=0.0
 
 
-def applyNeumann(Mesh,edge_nodes,function):
-    """Apply a natrural boundary condition"""
-    pass
+def applyNeumann(Mesh,edge_nodes,function,normal=True): #TODO make non-normal stuff possible
+    """Apply a natural boundary condition, must be normal"""
+    for node in edge_nodes:
+        ints=np.zeros((2,))
+        i=0
+        for j,els in Mesh.nodes[node].neighbors.items():
+            print(node,j,els)
+            if j in edge_nodes:
+                for el in els:
+                    if Mesh.elements[el].kind=='Line':
+                        print(node,' connected to ',j,' with edge ',el)
+                        self_ind=Mesh.elements[el].index(node)
+                        nei_ind=Mesh.elements[el].index(j)
+                        ints[i]=el#TODO
+                        i+=1
+
 
 
 def solveIt(Mesh,method='BiCGStab',precond=None,tolerance=1.0e-5):
@@ -154,23 +169,23 @@ def solveIt(Mesh,method='BiCGStab',precond=None,tolerance=1.0e-5):
 def checkBases(me):
     """Just a quick check that the basis functions are zero and 1 where they should be"""
     badn=0
-    for element in me.elements.values():
+    for element in list(me.elements.values()):
         for i,pt in enumerate(element.xyvecs()):
             if abs(element.bases[i](pt)-1)>1e-15:
-                print 'Bad element ',element.id,'basis ',i
+                print('Bad element ',element.id,'basis ',i)
                 badn+=1
     if badn==0:
-        print 'Bases are good'
+        print('Bases are good')
 
 
-def plotSolution(Mesh,threeD=False,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False):
+def plotSolution(Mesh,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
     mat_sol=sparse2mat(Mesh.coords,Mesh.sol,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
     if savesol:
         Mesh.matsol=mat_sol
-    fig=plt.figure()
+    fig=plt.figure(figsize=figsize)
     if threeD:
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(*np.meshgrid(*mat_sol[0:2]),Z=mat_sol[2])
+        ax.plot_trisurf(Mesh.coords[:,0],Mesh.coords[:,1],Z=Mesh.sol,cmap=cm.jet)
     else:
         ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(Mesh.sol),1.1*max(Mesh.sol),50))
         plt.colorbar(ctr)

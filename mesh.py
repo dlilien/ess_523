@@ -51,7 +51,7 @@ class Node:
         """Add an element using this node, with this as the pos'th node"""
         for node in self.parent.elements[elm].nodes:
             if node != self.id:
-                if node not in self.neighbors.keys():
+                if node not in list(self.neighbors.keys()):
                     self.neighbors[node]=[elm]
                 else:
                     self.neighbors[node].append(elm)
@@ -86,7 +86,7 @@ class Element(object):
         elif params[1] == 2:
             return TriangElement(nodes, ident=params[0], parent=parent, skwargs=kwargs)
         else:
-            print 'Unknown element type'
+            print('Unknown element type')
 
     def __str__(self):
         string = 'Element Number ' + str(self.id) + '\nType: ' + str(self.kind) + '(' + str(
@@ -164,7 +164,7 @@ class TriangElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 3:
-            print 'Bad Triangle'
+            print('Bad Triangle')
             return None
         if ident is not None:
             self.id = ident
@@ -178,7 +178,7 @@ class TriangElement(Element):
         self.nodes = nodes
         self.kind = TriangElement.kind
         self.eltypes = TriangElement.eltypes
-        for tag, val in skwargs.items():
+        for tag, val in list(skwargs.items()):
             setattr(self, tag, val)
         ps=self.xyvecs()
         self.cent=[(ps[0][0]+ps[1][0]+ps[2][0])/3.0,(ps[0][1]+ps[1][1]+ps[2][1])/3]
@@ -229,7 +229,7 @@ class LineElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 2:
-            print 'Bad Line'
+            print('Bad Line')
             return None
         if ident is not None:
             self.id = ident
@@ -241,7 +241,7 @@ class LineElement(Element):
         self.nodes = nodes
         self.kind = LineElement.kind
         self.eltypes = LineElement.eltypes
-        for tag, val in skwargs.items():
+        for tag, val in list(skwargs.items()):
             setattr(self, tag, val)
 
 
@@ -263,10 +263,10 @@ class Mesh:
         string = 'Mesh object\nNumber of nodes: ' + \
             str(self.numnodes) + '\nNumber of elements: ' + \
             str(self.numels) + '\nElement types: \n'
-        for key in self.eltypes.keys():
+        for key in list(self.eltypes.keys()):
             string += str(len(self.eltypes[key])) + \
                 ' elements of type ' + str(key) + '\n'
-        string += str(len(self.physents.keys())) + ' physical entities\n'
+        string += str(len(list(self.physents.keys()))) + ' physical entities\n'
         if self.bases:
             string += 'Bases formed'
         else:
@@ -277,19 +277,19 @@ class Mesh:
         with open(fn, 'r') as f:
             flines = f.readlines()
         if not flines[0] == '$MeshFormat\n':
-            print 'Unrecognized msh file'
+            print('Unrecognized msh file')
             return False
-        self.types = map(float, flines[1].split())
+        self.types = list(map(float, flines[1].split()))
         self.numnodes = int(flines[4])
-        self.nodes = {int(line[0]): Node(*map(float, line[1:4]), ident=int(line[0]),parent=self)
+        self.nodes = {int(line[0]): Node(*list(map(float, line[1:4])), ident=int(line[0]),parent=self)
                       for line in map(str.split, flines[5:(5 + self.numnodes)])}
         if not flines[self.numnodes + 6] == '$Elements\n':
-            print 'Unrecognized msh file'
+            print('Unrecognized msh file')
             return False
         self.numels = int(flines[self.numnodes + 7])
-        self.elements = {int(line[0]): Element.init_element_gmsh(map(int, line), parent=self) for line in map(
+        self.elements = {int(line[0]): Element.init_element_gmsh(list(map(int, line)), parent=self) for line in map(
             str.split, flines[(8 + self.numnodes):(8 + self.numnodes + self.numels)])}
-        for key in self.elements.keys():
+        for key in list(self.elements.keys()):
             for attr in ['eltypes', 'physents', 'geoents', 'npartits']:
                 try:
                     param = getattr(self.elements[key], attr)
@@ -305,21 +305,21 @@ class Mesh:
             for pos,node in enumerate(self.elements[key].nodes):
                 self.nodes[node].add_elm(key,pos)
         flines = None
-        self.coords=np.r_[[node.coords()[0:-1] for node in self.nodes.values()]]
+        self.coords=np.r_[[node.coords()[0:-1] for node in list(self.nodes.values())]]
 
     def CreateBases(self,gpts=True):
         """Create the finite element basis functions"""
         self.bases = {}
         self.dbases = {}
         if gpts:
-            for number, element in self.elements.items():
+            for number, element in list(self.elements.items()):
                 self.bases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._bases())}
                 self.dbases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._dbases())}
                 element._gpts()
         else:
-            for number, element in self.elements.items():
+            for number, element in list(self.elements.items()):
                 self.bases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._bases())}
                 self.dbases[number] = {
@@ -333,7 +333,7 @@ class Mesh:
             plt.figure()
         colors = ['b', 'k', 'r', 'c', 'g', 'm', 'darkred', 'darkgreen',
                   'darkslategray', 'saddlebrown', 'darkorange', 'darkmagenta', 'y']
-        plot_these = np.sort(self.physents.keys())[0:-1]
+        plot_these = np.sort(list(self.physents.keys()))[0:-1]
         plt_lines = {key: None for key in plot_these}
         for i, key in enumerate(plot_these):
             for j, element in enumerate(self.physents[key]):
@@ -343,7 +343,7 @@ class Mesh:
                 else:
                     plt.plot(*self.elements[element].pvecs(), color=colors[i])
         plt.legend(
-            plt_lines.values(), ['Border ' + num for num in map(str, plot_these)])
+            list(plt_lines.values()), ['Border ' + num for num in map(str, plot_these)])
         if axis is not None:
             plt.axis(axis)
         if show:
@@ -357,7 +357,7 @@ class Mesh:
             plt.figure(fignum)
         else:
             plt.figure()
-        plot_these = self.physents.keys()
+        plot_these = list(self.physents.keys())
         plt_lines = {key: None for key in plot_these}
         for i, key in enumerate(plot_these):
             for element in self.physents[key]:
