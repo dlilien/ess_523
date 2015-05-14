@@ -21,7 +21,7 @@ def diffusion(node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
     if 'k' in kwargs:
         k=kwargs['k']
     else:
-        k=lambda x:1
+        k=lambda x:1.0
     ints=np.zeros((max_nei,))
     for i,elm in enumerate(elements):
         n1b=elm[1].nodes.index(node1)

@@ -16,21 +16,25 @@ from scipy.sparse.linalg import bicgstab,cg,spsolve
 import equationsFEM
 import mesh
 import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
 from warnings import warn
 
 
 def main():
     """A callable version for debugging"""
     tm = mesh.Mesh()
-    tm.loadgmsh('testMesh.msh')
+    tm.loadgmsh('testmesh.msh')
+    #tm.loadgmsh('roughshear_bl.msh')
     tm.CreateBases()
-    MakeMatrixEQ(tm,f=lambda x:0.0)
+    MakeMatrixEQ(tm,f=lambda x:0.0,k=lambda x:1.00)
+    applyBCs(tm,dirichlet=[1,3],neumann=[2,4],b_funcs={4:lambda x: 1.0,2:lambda x: 1.0,1:lambda x:1.0, 3:lambda x: (abs(x[1]-5.0)+5.0)})
     solveIt(tm,method='CG')
-    plotSolution(tm)
+    plotSolution(tm,show=True,savesol=True)
+    #plotSolution(tm, show=True, x_steps=500, y_steps=500, cutoff=3000.0)
     return tm
 
 
-def MakeMatrixEQ(Mesh,eqn=equationsFEM.diffusion,max_nei=8,**kwargs):
+def MakeMatrixEQ(Mesh,eqn=equationsFEM.diffusion,max_nei=12,**kwargs):
     """Make the matrix form, max_nei is the most neighbors/element"""
     # We can ignore trailing zeros as long as we allocate space
     # I.e. go big with max_nei
@@ -49,7 +53,7 @@ def MakeMatrixEQ(Mesh,eqn=equationsFEM.diffusion,max_nei=8,**kwargs):
         for j,node2_els in node1.neighbors.items():
             rows[nnz]=i-1 #TODO
             cols[nnz]=j-1 #TODO
-            data[nnz]=eqn(i,j,[(1,Mesh.elements[nei_el]) for nei_el in node2_els if Mesh.elements[nei_el].eltypes==2],max_nei=max_nei) #TODO fix indexing, bases, the 1!!!!!
+            data[nnz]=eqn(i,j,[(nei_el,Mesh.elements[nei_el]) for nei_el in node2_els if Mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=kwargs) #TODO fix indexing, bases, the 1!!!!!
             nnz += 1
     Mesh.matrix=csc_matrix((data,(rows,cols)),shape=(Mesh.numnodes,Mesh.numnodes)) #TODO fix indexing
     Mesh.rhs=rhs
@@ -90,7 +94,7 @@ def applyBCs(Mesh,dirichlet=[],neumann=[],b_funcs={}):
     # Ok, hopefully we have parse-able input now
     edge_nodes={} # Figure out which nodes are associated with each boundary
     for edge in edges:
-        edge_nodes[edge]=np.zeros((2*len(Mesh.physents[edge]),))
+        edge_nodes[edge]=np.zeros((2*len(Mesh.physents[edge]),),dtype=int)
         for i,edge_element in enumerate(Mesh.physents[edge]):
             edge_nodes[edge][2*i]=Mesh.elements[edge_element].nodes[0]
             edge_nodes[edge][2*i+1]=Mesh.elements[edge_element].nodes[1]
@@ -112,7 +116,14 @@ def applyBCs(Mesh,dirichlet=[],neumann=[],b_funcs={}):
 
 def applyDirichlet(Mesh,edge_nodes,function):
     """Let's apply an essential boundary condition"""
-    pass
+    for node in edge_nodes:
+        Mesh.matrix[node-1,node-1]=1.0
+        Mesh.rhs[node-1]=function(Mesh.nodes[node].coords())
+        for j in Mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
+            if not j in edge_nodes: # Check if this neighboring node is on the edge
+                Mesh.rhs[j-1]=Mesh.rhs[j-1]-Mesh.matrix[j-1,node-1]*Mesh.rhs[node-1]
+            Mesh.matrix[node-1,j-1]=0.0
+            Mesh.matrix[j-1,node-1]=0.0
 
 
 def applyNeumann(Mesh,edge_nodes,function):
@@ -152,11 +163,17 @@ def checkBases(me):
         print 'Bases are good'
 
 
-def plotSolution(Mesh,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5):
+def plotSolution(Mesh,threeD=False,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False):
     mat_sol=sparse2mat(Mesh.coords,Mesh.sol,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
-    plt.figure()
-    ctr=plt.contourf(*mat_sol)#,levels=np.linspace(min(Mesh.sol),max(Mesh.sol),150))
-    plt.colorbar(ctr)
+    if savesol:
+        Mesh.matsol=mat_sol
+    fig=plt.figure()
+    if threeD:
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(*np.meshgrid(*mat_sol[0:2]),Z=mat_sol[2])
+    else:
+        ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(Mesh.sol),1.1*max(Mesh.sol),50))
+        plt.colorbar(ctr)
     if savefig is not None:
         plt.savefig(savefig)
     if show:
