@@ -12,8 +12,17 @@ Define a mesh classes that have info I might want about finite element meshes
 
 import numpy as np
 from scipy.linalg import solve
+from scipy.sparse.linalg import bicgstab,cg,spsolve
 import matplotlib.pyplot as plt
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
+from warnings import warn
 from os.path import splitext
+from scipy.sparse import csc_matrix
+from scipy.spatial import cKDTree as KDTree
+from scipy.interpolate import griddata
+Axes3D # Avoid the warning
+
 
 
 class Node:
@@ -387,7 +396,7 @@ class Mesh:
             plt.savefig(writefile)
 
 
-class modelIterate:
+class model:
     """A steady state model, with associated mesh, BCs, and equations"""
     def __init__(self,*mesh):
         if mesh:
@@ -405,11 +414,17 @@ class modelIterate:
                 self.mesh=mesh[0]
             else:
                 raise TypeError('Mesh input not understood')
+            self.mesh.CreateBases()
         self.BCs={}
+    
+
+    def add_equation(self,eqn):
+        self.eqn=eqn
 
 
     def add_BC(self,cond_type,target_edge,function=lambda x:0.0):
-        """Assign a boundary condition"""
+        """Assign a boundary condition, has some checking"""
+        # You can also just manually edit the self.BCs dictionary
         if not cond_type in ['neumann','dirichlet']:
             raise TypeError('Not a recognized boundary condition type')
         elif not target_edge in self.mesh.physents.keys():
@@ -418,14 +433,195 @@ class modelIterate:
             raise ValueError('Specified target is plane not edge')
         else:
             try:
-                function(self.mesh.nodes[self.mesh.elements[self.mesh.physents[target_edge][0]].nodes[0]])
+                function(self.mesh.nodes[self.mesh.elements[self.mesh.physents[target_edge][0]].nodes[0]].coords())
             except:
-                raise TypeError('Not a usable function, must take vector input')
+                raise TypeError('Not a usable function, must take vector input and time')
         self.BCs[target_edge]=(cond_type,function)
+
+class ModelIterate:
+    """This object makes matrix, forms a solution, etc"""
+
+
+    def __init__(self,model,*eqn):
+        self.parent=model
+        self.mesh=self.parent.mesh
+        if eqn:
+            self.eqn=eqn
+        else:
+            self.eqn=self.parent.eqn
+    
+
+    def MakeMatrixEQ(self,max_nei=12,**kwargs):
+        """Make the matrix form, max_nei is the most neighbors/element"""
+        # We can ignore trailing zeros as long as we allocate space
+        # I.e. go big with max_nei
+        #TODO fix equation handling...
+        #TODO automatic max_nei
+        rows=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
+        cols=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
+        data=np.zeros(max_nei*self.mesh.numnodes)
+        rhs=np.zeros(self.mesh.numnodes)
+        nnz=0
+        for i,node1 in self.mesh.nodes.items():
+            rows[nnz]=i-1 #TODO
+            cols[nnz]=i-1 #TODO
+            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=kwargs) #TODO fix indexing, bases
+            nnz += 1
+            for j,node2_els in node1.neighbors.items():
+                rows[nnz]=i-1 #TODO
+                cols[nnz]=j-1 #TODO
+                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=kwargs) #TODO fix indexing, bases, the 1!!!!!
+                nnz += 1
+        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes)) #TODO fix indexing
+        self.rhs=rhs
+        return None
+
+        
+    def applyBCs(self):
+        Mesh=self.mesh
+        dirichlet=[edgeval[0] for edgeval in self.parent.BCs.items() if edgeval[1][0]=='dirichlet']
+        neumann=[edgeval[0] for edgeval in self.parent.BCs.items() if edgeval[1][0]=='neumann']
+        b_funcs={edgeval[0]:edgeval[1][1] for edgeval in self.parent.BCs.items()}
+        edges=np.sort(list(Mesh.physents.keys()))[0:-1]
+        listed_edges=np.sort(dirichlet+neumann)
+        print(edges,listed_edges)
+        if not all(edges==listed_edges):
+            for edge in listed_edges:
+                if not edge in edges:
+                    print('You list a non existent border '+str(edge)+' in types')
+                    print('Available borders are ',edges)
+                    raise ValueError('Unknown border')
+            else:
+                print('Some border not specified in types, taking Neumann')
+                print('Borders are ',edges,' listed are ',listed_edges)
+
+
+        # minor checking which we will warn but ignore
+        if not all(edges==np.sort(list(b_funcs.keys()))):
+            print('Error with borders')
+            for edge in list(b_funcs.keys()):
+                if not edge in edges:
+                    print('You list a non existent border '+str(edge)+' in types')
+                    print('Available borders are ',edges)
+                    raise ValueError ('Unknown border')
+            else:
+                print('Some border not specified in types, taking equal to zero')
+                print('Borders are ',edges,' listed are ',b_funcs.keys())
+
+        # Ok, hopefully we have parse-able input now
+        edge_nodes={} # Figure out which nodes are associated with each boundary
+        for edge in edges:
+            edge_nodes[edge]=np.zeros((2*len(Mesh.physents[edge]),),dtype=int)
+            for i,edge_element in enumerate(Mesh.physents[edge]):
+                edge_nodes[edge][2*i]=Mesh.elements[edge_element].nodes[0]
+                edge_nodes[edge][2*i+1]=Mesh.elements[edge_element].nodes[1]
+            edge_nodes[edge]=np.unique(edge_nodes[edge]) # no repeats
+
+        for edge in dirichlet:
+            try:
+                self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
+            except KeyError:
+                self.applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
+                # maybe throw the error though?
+
+        for edge in neumann:
+            try:
+                self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True)
+            except KeyError: # If we have no condition we are just taking 0 neumann
+                pass
+
+    def applyNeumann(self,edge_nodes,function,normal=True): #TODO make non-normal stuff possible
+        """Apply a natural boundary condition, must be normal"""
+        for node in edge_nodes:
+            ints=np.zeros((2,))
+            i=0
+            for j,els in self.mesh.nodes[node].neighbors.items():
+                print(node,j,els)
+                if j in edge_nodes:
+                    for el in els:
+                        if self.mesh.elements[el].kind=='Line':
+                            print(node,' connected to ',j,' with edge ',el)
+    #                        self_ind=self.mesh.elements[el].nodes.index(node)
+    #                        nei_ind=self.mesh.elements[el].nodes.index(j)
+                            ints[i]=el#TODO actually calculate integral
+                            i+=1
+    def applyDirichlet(self,edge_nodes,function):
+        """Let's apply an essential boundary condition"""
+        for node in edge_nodes:
+            self.matrix[node-1,node-1]=1.0
+            self.rhs[node-1]=function(self.mesh.nodes[node].coords())
+            for j in self.mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
+                if not j in edge_nodes: 
+                    # Check if this neighboring node is on the edge
+                    self.rhs[j-1]=self.rhs[j-1]-self.matrix[j-1,node-1]*self.rhs[node-1]
+                self.matrix[node-1,j-1]=0.0
+                self.matrix[j-1,node-1]=0.0   
+
+
+
+    def solveIt(self,method='BiCGStab',precond=None,tolerance=1.0e-5):
+        """Do some linear algebra"""
+        if method=='CG':
+                self.sol,info=cg(self.matrix,self.rhs,tol=tolerance)
+                if info>0:
+                    warn('Conjugate gradient did not converge. Attempting BiCGStab')
+                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
+                    if info>0:
+                        raise ConvergenceError(method='CG and BiCGStab',iters=info)
+        elif method=='BiCGStab':
+            self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
+            if info>0:
+                raise ConvergenceError(method=method,iters=info)
+        elif method=='direct':
+            self.sol=spsolve(self.matrix,self.rhs)
+        else:
+            raise TypeError('Unknown solution method')
+        return self.sol
+
+
+    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+        mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+        if savesol:
+            self.matsol=mat_sol
+        fig=plt.figure(figsize=figsize)
+        if threeD:
+            ax = fig.add_subplot(111, projection='3d')
+            ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=self.sol,cmap=cm.jet)
+        else:
+            ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+            plt.colorbar(ctr)
+        if savefig is not None:
+            plt.savefig(savefig)
+        if show:
+            plt.show()
+        return mat_sol
+
+
+    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+        """Grid up some sparse, potentially concave data"""
+        coords=self.mesh.coords
+        data=self.sol
+        tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+        ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+        XI, YI = np.meshgrid(tx, ty)
+        ZI = griddata(coords, data, (XI, YI), method='linear')
+        tree = KDTree(coords)
+        dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+        dist = dist.reshape(XI.shape)
+        ZI[dist > cutoff_dist] = np.nan
+        return [tx, ty, ZI]
+
+class ConvergenceError(Exception):
+    """Error for bad iterative method result"""
+    def __init__(self,method=None,iters=None):
+        self.method=method
+        self.iters=iters
+    def __str__(self):
+        return 'Method '+self.method+' did not converge at iteration '+str(self.iters)
 
 
 def main():
-    tm=modelIterate('testmesh.msh')
+    tm=model('testmesh.msh')
     return tm
 
 
