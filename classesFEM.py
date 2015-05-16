@@ -232,12 +232,12 @@ class LineElement(Element):
 
     def _dbases(self):
         pts=self.xyvecs()
-        self.dbases= [[self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[0](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))],[self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[1.0],[0.0]])),self.bases[1](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[0.0],[1.0]]))]]
+        self.dbases= [[self.bases[0](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[1.0],[0.0]])),self.bases[0](np.array(pts[1]).reshape(len(pts[1]),1)+np.array([[0.0],[1.0]]))],[self.bases[1](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[1.0],[0.0]])),self.bases[1](np.array(pts[0]).reshape(len(pts[0]),1)+np.array([[0.0],[1.0]]))]]
         return self.dbases
 
     def _normal(self):
         pts=self.xyvecs()
-        self.normal=np.array([pts[1][1]-pts[0][1],pts[1][0]-pts[0][0]])/self.length
+        self.normal=np.array([pts[0][1]-pts[1][1],pts[1][0]-pts[0][0]])/self.length
         return self.normal
 
     def __init__(self, nodes, ident, parent, skwargs):
@@ -254,6 +254,8 @@ class LineElement(Element):
         self.nodes = nodes
         self.kind = LineElement.kind
         self.eltypes = LineElement.eltypes
+        ps = self.xyvecs()
+        self.cent=[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2]
         for tag, val in list(skwargs.items()):
             setattr(self, tag, val)
 
@@ -343,7 +345,6 @@ class Mesh:
                 if normals:
                     element._normal()
 
-
     def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""
         if fignum is not None:
@@ -390,6 +391,10 @@ class Mesh:
         elif labels=='number':
             for eln in self.eltypes[2]:
                 plt.text(self.elements[eln].cent[0],self.elements[eln].cent[1],'%d' % eln)
+        elif labels=='edge_el_num':
+            for eln in self.eltypes[1]:
+                plt.text(self.elements[eln].cent[0],self.elements[eln].cent[1],'%d' % eln)
+                
         if show:
             plt.show()
         if writefile is not None:
@@ -438,6 +443,7 @@ class model:
                 raise TypeError('Not a usable function, must take vector input and time')
         self.BCs[target_edge]=(cond_type,function)
 
+
 class ModelIterate:
     """This object makes matrix, forms a solution, etc"""
 
@@ -484,7 +490,6 @@ class ModelIterate:
         b_funcs={edgeval[0]:edgeval[1][1] for edgeval in self.parent.BCs.items()}
         edges=np.sort(list(Mesh.physents.keys()))[0:-1]
         listed_edges=np.sort(dirichlet+neumann)
-        print(edges,listed_edges)
         if not all(edges==listed_edges):
             for edge in listed_edges:
                 if not edge in edges:
@@ -530,21 +535,50 @@ class ModelIterate:
             except KeyError: # If we have no condition we are just taking 0 neumann
                 pass
 
-    def applyNeumann(self,edge_nodes,function,normal=True): #TODO make non-normal stuff possible
+    def applyNeumann(self,edge_nodes,function,normal=True,flux=True): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
+        print(edge_nodes)
         for node in edge_nodes:
-            ints=np.zeros((2,))
+            print(node)
+
+            ints=np.zeros((4,))
             i=0
+
+
             for j,els in self.mesh.nodes[node].neighbors.items():
                 print(node,j,els)
                 if j in edge_nodes:
-                    for el in els:
-                        if self.mesh.elements[el].kind=='Line':
+                    for k,el in enumerate(els):
+                        if self.mesh.elements[el].kind=='Triangular':
+                            if k==0:
+                                gpts=self.mesh.elements[els[1]].gpoints
+                                normals=self.mesh.elements[els[1]].normal
+                                length=self.mesh.elements[els[1]].length
+
+                            self_ind=self.mesh.elements[el].nodes.index(node)
+                            nei_ind=self.mesh.elements[el].nodes.index(j)
+
+                            if normal:
+                                print(self.mesh.elements[el].dbases)
+                                print(normals)
+                                ints[i]=np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[nei_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[self_ind][0]*normals[0]+self.mesh.elements[el].dbases[self_ind][1]*normals[1]) for gpt in gpts])
+                                ints[i+1]=np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[self_ind][0]*normals[0]+self.mesh.elements[el].dbases[self_ind][1]*normals[1]) for gpt in gpts])
+                                i+=2
+                            else:
+                                raise TypeError('Non-normal fluxes not yet supported')#TODO non-normal
+
+                        elif self.mesh.elements[el].kind=='Line':
                             print(node,' connected to ',j,' with edge ',el)
-    #                        self_ind=self.mesh.elements[el].nodes.index(node)
-    #                        nei_ind=self.mesh.elements[el].nodes.index(j)
-                            ints[i]=el#TODO actually calculate integral
-                            i+=1
+                            gpts=self.mesh.elements[el].gpoints
+                            normals=self.mesh.elements[el].normal
+                            length=self.mesh.elements[el].length
+
+                            self_ind=self.mesh.elements[el].nodes.index(node)
+                            nei_ind=self.mesh.elements[el].nodes.index(j)
+            print(ints)
+            self.rhs[node-1]=self.rhs[node-1]-np.sum(ints)
+
+
     def applyDirichlet(self,edge_nodes,function):
         """Let's apply an essential boundary condition"""
         for node in edge_nodes:
@@ -611,6 +645,7 @@ class ModelIterate:
         ZI[dist > cutoff_dist] = np.nan
         return [tx, ty, ZI]
 
+
 class ConvergenceError(Exception):
     """Error for bad iterative method result"""
     def __init__(self,method=None,iters=None):
@@ -621,8 +656,18 @@ class ConvergenceError(Exception):
 
 
 def main():
-    tm=model('testmesh.msh')
-    return tm
+    import equationsFEM
+    mod=model('testmesh.msh')
+    mod.add_equation(equationsFEM.diffusion)
+    mod.add_BC('dirichlet',1,lambda x: 10.0)
+    mod.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
+    mod.add_BC('neumann',3,lambda x:0.01) #'dirichlet',3,lambda x:10.0) #abs(x[1]-5.0)+5.0)
+    mod.add_BC('neumann',4,lambda x:0.0)
+    mi=ModelIterate(mod)
+    mi.MakeMatrixEQ()#f=lambda x:(5.0-abs(x[0]-5.0))*(5.0-abs(x[1]-5.0)),k=lambda x:10.0)
+    mi.applyBCs()
+    mi.solveIt(method='CG')
+    return mi
 
 
 if __name__ == '__main__':
