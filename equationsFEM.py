@@ -26,7 +26,7 @@ def diffusion(node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
     for i,elm in enumerate(elements):
         n1b=elm[1].nodes.index(node1)
         n2b=elm[1].nodes.index(node2)
-        ints[i]=elm[1].area*np.sum([gp[0]*(elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1])*k(gp[1:]) for gp in elm[1].gpoints]) 
+        ints[i]=elm[1].area*np.sum([gp[0]*(elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1])*k(elm[1].F(gp[1:])) for gp in elm[1].gpoints]) 
     if rhs:
         if 'f' in kwargs:
             f=kwargs['f']

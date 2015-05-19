@@ -208,6 +208,13 @@ class LineElement(Element):
     eltypes = 1
     gpoints = [ [0.5, (1.0-1.0/np.sqrt(3.0))/2.0, 0], [0.5, (1.0+1.0/np.sqrt(3.0))/2.0, 0]]
 
+
+    def _F(self):
+        if self.F is None:
+            ps=self.xyvecs()
+            self.F = lambda p: np.array([ps[0][0]+p[0]*(ps[1][0]-ps[0][0]),ps[0][1]+p[0]*(ps[1][1]-ps[0][1])])
+        return self.F
+
     def _Finv(self):
         pts=self.xyvecs()
         return lambda p: np.array([[pts[0][0]+(pts[0][0]-pts[1][0])*p[0]],[pts[0][1]+(pts[0][1]-pts[1][1])*p[0]]])
@@ -220,12 +227,14 @@ class LineElement(Element):
 
     def _b1(self, pts):
         if pts[1][0]==pts[0][0]:
+            print(pts)
             return lambda x: (float(pts[1][1]) - x[1]) / (pts[1][1] - pts[0][1])
         else:
             return lambda x: (float(pts[1][0]) - x[0]) / (pts[1][0] - pts[0][0])
 
     def _bases(self, *args):
         pts = self.xyvecs()
+        self._F()
         self.length=np.sqrt(np.sum([(pts[0][i]-pts[1][i])**2 for i in range(len(pts[0]))]))
         self.bases = [self._b1(pts), self._b2(pts)]
         return self.bases
@@ -254,6 +263,7 @@ class LineElement(Element):
         self.nodes = nodes
         self.kind = LineElement.kind
         self.eltypes = LineElement.eltypes
+        self.F=None
         ps = self.xyvecs()
         self.cent=[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2]
         for tag, val in list(skwargs.items()):
@@ -522,12 +532,6 @@ class ModelIterate:
                 edge_nodes[edge][2*i+1]=Mesh.elements[edge_element].nodes[1]
             edge_nodes[edge]=np.unique(edge_nodes[edge]) # no repeats
 
-        for edge in dirichlet:
-            try:
-                self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
-            except KeyError:
-                self.applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
-                # maybe throw the error though?
 
         for edge in neumann:
             try:
@@ -535,18 +539,38 @@ class ModelIterate:
             except KeyError: # If we have no condition we are just taking 0 neumann
                 pass
 
+        for edge in dirichlet:
+            try:
+                self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
+            except KeyError:
+                self.applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
+                # maybe throw the error though?
+
+
     def applyNeumann(self,edge_nodes,function,normal=True,flux=True): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
-        print(edge_nodes)
         for node in edge_nodes:
-            print(node)
+            for j,els in self.mesh.nodes[node].neighbors.items():
+                if j in edge_nodes:
+                    for k,el in enumerate(els):
+                        if self.mesh.elements[el].kind=='Line':
+                            if normal:
+                                print(el)
+                                print([self.mesh.elements[el].F(gpt[1:-1]) for gpt in self.mesh.elements[el].gpoints])
+                                print(self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)])
+                                self.rhs[node-1] =self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                            else:
+                                raise TypeError('Non-normal fluxes not yet supported')#TODO non-normal
 
-            ints=np.zeros((4,))
+
+    def applyNeumannOld(self,edge_nodes,function,normal=True,flux=True): #TODO make non-normal stuff, non-flux  possible
+        """Apply a natural boundary condition, must be normal"""
+        for node in edge_nodes:
+
+            ints=np.zeros((6,))   #Get ready to iterate
             i=0
 
-
             for j,els in self.mesh.nodes[node].neighbors.items():
-                print(node,j,els)
                 if j in edge_nodes:
                     for k,el in enumerate(els):
                         if self.mesh.elements[el].kind=='Triangular':
@@ -556,26 +580,34 @@ class ModelIterate:
                                 length=self.mesh.elements[els[1]].length
 
                             self_ind=self.mesh.elements[el].nodes.index(node)
-                            nei_ind=self.mesh.elements[el].nodes.index(j)
+                            #nei_ind=self.mesh.elements[el].nodes.index(j)
+                            #last_ind=[ind for ind in [0,1,2] if ind not in [self_ind,nei_ind]][0]
+                            
 
                             if normal:
-                                print(self.mesh.elements[el].dbases)
-                                print(normals)
-                                ints[i]=np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[nei_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[self_ind][0]*normals[0]+self.mesh.elements[el].dbases[self_ind][1]*normals[1]) for gpt in gpts])
-                                ints[i+1]=np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[self_ind][0]*normals[0]+self.mesh.elements[el].dbases[self_ind][1]*normals[1]) for gpt in gpts])
-                                i+=2
+                                 #ints[ i ] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[nei_ind][0]*normals[0]+self.mesh.elements[el].dbases[nei_ind][1]*normals[1]) for gpt in gpts])
+                                 #ints[i+1] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[self_ind][0]*normals[0]+self.mesh.elements[el].dbases[self_ind][1]*normals[1]) for gpt in gpts])
+                                 #ints[i+2] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1])*(self.mesh.elements[el].dbases[last_ind][0]*normals[0]+self.mesh.elements[el].dbases[last_ind][1]*normals[1]) for gpt in gpts])
+                                 #i+=3
+                                 ints[ i ] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1]) for gpt in gpts])
+                                 #ints[i+1] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1]) for gpt in gpts])
+                                 #ints[i+2] = np.sum([length*gpt[0]*function(gpt[1:-1])*self.mesh.elements[el].bases[self_ind](gpt[1:-1]) for gpt in gpts])
+                                 i+=3
                             else:
                                 raise TypeError('Non-normal fluxes not yet supported')#TODO non-normal
 
                         elif self.mesh.elements[el].kind=='Line':
-                            print(node,' connected to ',j,' with edge ',el)
                             gpts=self.mesh.elements[el].gpoints
                             normals=self.mesh.elements[el].normal
                             length=self.mesh.elements[el].length
 
                             self_ind=self.mesh.elements[el].nodes.index(node)
-                            nei_ind=self.mesh.elements[el].nodes.index(j)
-            print(ints)
+                            #nei_ind=self.mesh.elements[el].nodes.index(j)
+
+
+
+
+            print(ints,normals)
             self.rhs[node-1]=self.rhs[node-1]-np.sum(ints)
 
 
@@ -590,7 +622,6 @@ class ModelIterate:
                     self.rhs[j-1]=self.rhs[j-1]-self.matrix[j-1,node-1]*self.rhs[node-1]
                 self.matrix[node-1,j-1]=0.0
                 self.matrix[j-1,node-1]=0.0   
-
 
 
     def solveIt(self,method='BiCGStab',precond=None,tolerance=1.0e-5):
@@ -661,12 +692,12 @@ def main():
     mod.add_equation(equationsFEM.diffusion)
     mod.add_BC('dirichlet',1,lambda x: 10.0)
     mod.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
-    mod.add_BC('neumann',3,lambda x:0.01) #'dirichlet',3,lambda x:10.0) #abs(x[1]-5.0)+5.0)
+    mod.add_BC('neumann',3,lambda x:1.0) # 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
     mod.add_BC('neumann',4,lambda x:0.0)
     mi=ModelIterate(mod)
     mi.MakeMatrixEQ()#f=lambda x:(5.0-abs(x[0]-5.0))*(5.0-abs(x[1]-5.0)),k=lambda x:10.0)
     mi.applyBCs()
-    mi.solveIt(method='CG')
+    mi.solveIt(method='direct')
     return mi
 
 
