@@ -12,8 +12,9 @@ Define a mesh classes that have info I might want about finite element meshes
 
 import numpy as np
 from scipy.linalg import solve
-from scipy.sparse.linalg import bicgstab,cg,spsolve
+from scipy.sparse.linalg import bicgstab,cg,spsolve,gmres,spilu,LinearOperator
 import matplotlib.pyplot as plt
+from equationsFEM import Equation
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from warnings import warn
@@ -22,7 +23,7 @@ from scipy.sparse import csc_matrix
 from scipy.spatial import cKDTree as KDTree
 from scipy.interpolate import griddata
 Axes3D # Avoid the warning
-
+bc=0
 
 
 class Node:
@@ -410,9 +411,9 @@ class Mesh:
             plt.savefig(writefile)
 
 
-class model:
+class Model:
     """A steady state model, with associated mesh, BCs, and equations"""
-    def __init__(self,*mesh):
+    def __init__(self,*mesh,**kwargs):
         if mesh:
             if type(mesh[0])==str:
                 f_type=splitext(mesh[0])[1]
@@ -430,10 +431,39 @@ class model:
                 raise TypeError('Mesh input not understood')
             self.mesh.CreateBases()
         self.BCs={}
-    
+
+        # Do a bunch of rigamarole to allow a couple kwargs for linearity
+        if 'td' in kwargs:
+            if kwargs['td']:
+                self.time_dep=True
+            else:
+                self.time_dep=False
+        elif 'time_dep' in kwargs:
+            if kwargs['time_dep']:
+                self.time_dep=True
+            else:
+                self.time_dep=False
+        elif 'steady' in kwargs:
+            if kwargs['steady']:
+                self.time_dep=False
+            else:
+                self.time_dep=True
+        else:
+            print('Defaulting to steady state model')
+            self.time_dep=False
 
     def add_equation(self,eqn):
+        try:
+            if not Equation in type(eqn).__bases__:
+                raise TypeError('Need equation of type equationsFEM.Equation')
+        except AttributeError:
+            raise TypeError('Need equation of type equationsFEM.Equation')
         self.eqn=eqn
+        if eqn.lin:
+            self.linear=True
+        else:
+            self.linear=False
+        return None
 
 
     def add_BC(self,cond_type,target_edge,function=lambda x:0.0):
@@ -446,11 +476,25 @@ class model:
         elif target_edge==max(self.mesh.physents.keys()):
             raise ValueError('Specified target is plane not edge')
         else:
-            try:
-                function(self.mesh.nodes[self.mesh.elements[self.mesh.physents[target_edge][0]].nodes[0]].coords())
-            except:
-                raise TypeError('Not a usable function, must take vector input and time')
+            if not self.time_dep:
+                try:
+                    function(self.mesh.nodes[self.mesh.elements[self.mesh.physents[target_edge][0]].nodes[0]].coords())
+                except:
+                    raise TypeError('Not a usable function, must take vector input and time')
+            else:
+                try:
+                    function(self.mesh.nodes[self.mesh.elements[self.mesh.physents[target_edge][0]].nodes[0]].coords(),0.0)
+                except:
+                    raise TypeError('Not a usable function, must take vector input and time')
+
         self.BCs[target_edge]=(cond_type,function)
+
+
+    def makeIterate(self):
+        if self.linear:
+            return LinearModel(self)
+        else:
+            return NonLinearModel(self)
 
 
 class ModelIterate:
@@ -461,7 +505,7 @@ class ModelIterate:
         self.parent=model
         self.mesh=self.parent.mesh
         if eqn:
-            self.eqn=eqn
+            self.eqn=eqn[0]
         else:
             self.eqn=self.parent.eqn
     
@@ -470,7 +514,6 @@ class ModelIterate:
         """Make the matrix form, max_nei is the most neighbors/element"""
         # We can ignore trailing zeros as long as we allocate space
         # I.e. go big with max_nei
-        #TODO fix equation handling...
         #TODO automatic max_nei
         rows=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
         cols=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
@@ -478,25 +521,29 @@ class ModelIterate:
         rhs=np.zeros(self.mesh.numnodes)
         nnz=0
         for i,node1 in self.mesh.nodes.items():
-            rows[nnz]=i-1 #TODO
-            cols[nnz]=i-1 #TODO
-            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=kwargs) #TODO fix indexing, bases
+            rows[nnz]=i-1 
+            cols[nnz]=i-1
+            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=kwargs)
             nnz += 1
             for j,node2_els in node1.neighbors.items():
-                rows[nnz]=i-1 #TODO
-                cols[nnz]=j-1 #TODO
-                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=kwargs) #TODO fix indexing, bases, the 1!!!!!
+                rows[nnz]=i-1
+                cols[nnz]=j-1
+                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=kwargs)
                 nnz += 1
-        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes)) #TODO fix indexing
+        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes))
         self.rhs=rhs
         return None
 
         
-    def applyBCs(self):
+    def applyBCs(self,*bcs):
+        if bcs:
+            BCs=bcs[0]
+        else:
+            BCs=self.parent.BCs
         Mesh=self.mesh
-        dirichlet=[edgeval[0] for edgeval in self.parent.BCs.items() if edgeval[1][0]=='dirichlet']
-        neumann=[edgeval[0] for edgeval in self.parent.BCs.items() if edgeval[1][0]=='neumann']
-        b_funcs={edgeval[0]:edgeval[1][1] for edgeval in self.parent.BCs.items()}
+        dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
+        neumann=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='neumann']
+        b_funcs={edgeval[0]:edgeval[1][1] for edgeval in BCs.items()}
         edges=np.sort(list(Mesh.physents.keys()))[0:-1]
         listed_edges=np.sort(dirichlet+neumann)
         if not all(edges==listed_edges):
@@ -561,7 +608,6 @@ class ModelIterate:
                                 self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
 
-
     def applyDirichlet(self,edge_nodes,function):
         """Let's apply an essential boundary condition"""
         for node in edge_nodes:
@@ -575,24 +621,48 @@ class ModelIterate:
                 self.matrix[j-1,node-1]=0.0   
 
 
-    def solveIt(self,method='BiCGStab',precond=None,tolerance=1.0e-5):
+    def solveIt(self,method='BiCGStab',precond='LU',tolerance=1.0e-5):
         """Do some linear algebra"""
+        if not method=='direct':
+            if precond=='LU':
+                p=spilu(self.matrix, drop_tol=1.0e-5)
+                M_x=lambda x: p.solve(x)
+                M=LinearOperator((self.mesh.numnodes,self.mesh.numnodes),M_x)
+            elif precond is not None:
+                M=precond
         if method=='CG':
+            if precond is not None:
+                self.sol,info=cg(self.matrix,self.rhs,tol=tolerance,M=M)
+            else:
                 self.sol,info=cg(self.matrix,self.rhs,tol=tolerance)
-                if info>0:
-                    warn('Conjugate gradient did not converge. Attempting BiCGStab')
+            if info>0:
+                warn('Conjugate gradient did not converge. Attempting BiCGStab')
+                if precond is not None:
+                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance,M=M)
+                else:
                     self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
-                    if info>0:
-                        raise ConvergenceError(method='CG and BiCGStab',iters=info)
+                if info>0:
+                    raise ConvergenceError(method='CG and BiCGStab',iters=info)
         elif method=='BiCGStab':
-            self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
+            if precond is not None:
+                self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance,M=M)
+            else:
+                self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
             if info>0:
                 raise ConvergenceError(method=method,iters=info)
         elif method=='direct':
             self.sol=spsolve(self.matrix,self.rhs)
+        elif method=='GMRES':
+            if precond is not None:
+                self.sol,info=gmres(self.matrix,self.rhs,tol=tolerance,M=M)
+            else:
+                self.sol,info=gmres(self.matrix,self.rhs,tol=tolerance)
+            if info>0:
+                raise ConvergenceError(method=method,iters=info)
         else:
             raise TypeError('Unknown solution method')
         return self.sol
+
 
 
     def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
@@ -628,28 +698,109 @@ class ModelIterate:
         return [tx, ty, ZI]
 
 
+class LinearModel(ModelIterate):
+    """A Linear Model Iterate"""
+    # Basically the same as a model iterate, add a method to solve things
+    kind='Linear'
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,BCs=None,**kwargs):
+        self.MakeMatrixEQ(max_nei=max_nei)
+        if BCs is not None:
+            self.applyBCs(BCs)
+        else:
+            self.applyBCs()
+        return self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+
+
+class NonLinearModel:
+    """A class for performing the solves on a nonlinear model, with the same method names"""
+    kind='NonLinear'
+
+
+class TimeDependentModel:
+    """A time dependent model"""
+
+
+    def __init__(self,model,timestep,n_steps,initial_condition,method='BDF2',lin_method='BiCGStab',precond='LU',lin_tolerance=1.0e-5):
+        """We are doing this as a class to organize the results, but init does all computation"""
+        if not type(model)==Model:
+            raise TypeError('Model must be of class Model')
+        self.model=model
+        if not type(timestep)==float:
+            raise TypeError('Timestep must be a float')
+        self.timestep=timestep
+        if not type(n_steps)==int:
+            raise TypeError('Number of timesteps must be an integer')
+        if not n_steps>0:
+            raise ValueError('Number of timesteps must be strictly greater than 0')
+        self.n_steps=n_steps
+        if not lin_method in ['BiCGStab','GMRES','direct','CG']:
+            raise ValueError('Not a supported linear solver')
+        self.lin_method=lin_method
+        if not precond in ['LU', None]:
+            raise ValueError('Not a supported procondtioner')
+        self.precond=precond
+        if not type(lin_tolerance)==float:
+            raise TypeError('Tolerance must be a float')
+        self.lin_tolerance=lin_tolerance
+        self.ic=initial_condition
+        self.method=method
+        self.sol=self.solveIt()
+
+
+    def __str__(self):
+        return 'Time dependent model with '+str(self.n_steps)+' time steps'
+
+
+    def solveIt(self):
+        sol=[]
+        if self.model.eqn.lin:
+            iterate=LinearModel
+        else:
+            iterate=NonLinearModel
+        if self.method=='BDF2':
+            for i in range(self.n_steps):
+                time=i*self.timestep
+                equation=self.model.eqn
+                model_iterate=iterate(self.model,equation)
+                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,BCs={edge:(bc[0],lambda x: bc[1](x,time)) for edge,bc in self.model.BCs.items()}))
+                self.mi=model_iterate
+        else:
+            raise ValueError('Not a supported timestepping method. Use BDF2.')
+        return sol
+
+
 class ConvergenceError(Exception):
     """Error for bad iterative method result"""
+
+
     def __init__(self,method=None,iters=None):
         self.method=method
         self.iters=iters
+
+
     def __str__(self):
         return 'Method '+self.method+' did not converge at iteration '+str(self.iters)
 
 
 def main():
     import equationsFEM
-    mod=model('testmesh.msh')
-    mod.add_equation(equationsFEM.diffusion)
-    mod.add_BC('dirichlet',1,lambda x: 10.0)
-    mod.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
-    mod.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
-    mod.add_BC('neumann',4,lambda x:0.0)
-    mi=ModelIterate(mod)
-    mi.MakeMatrixEQ()#f=lambda x:(5.0-abs(x[0]-5.0))*(5.0-abs(x[1]-5.0)),k=lambda x:10.0)
-    mi.applyBCs()
-    mi.solveIt(method='CG')
-    return mi
+    mo=Model('testmesh.msh')
+    mo.add_equation(equationsFEM.diffusion())
+    mo.add_BC('dirichlet',1,lambda x: 10.0)
+    mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
+    mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
+    mo.add_BC('neumann',4,lambda x:0.0)
+    m=LinearModel(mo)
+    m.iterate()
+
+    mod=Model('testmesh.msh',td=True)
+    mod.add_equation(equationsFEM.diffusion())
+    mod.add_BC('dirichlet',1,lambda x,t: 10.0)
+    mod.add_BC('neumann',2,lambda x,t:-1.0) # 'dirichlet',2,lambda x: 10.0)
+    mod.add_BC( 'dirichlet',3,lambda x,t: abs(x[1]-5.0)+5.0)
+    mod.add_BC('neumann',4,lambda x,t:0.0)
+    mi=TimeDependentModel(mod,1.0,2,lambda x:0.0)
+    return m,mi
 
 
 if __name__ == '__main__':
