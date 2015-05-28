@@ -19,7 +19,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from warnings import warn
 from os.path import splitext
-from scipy.sparse import csc_matrix
+from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
 from scipy.interpolate import griddata
 Axes3D # Avoid the warning
@@ -535,11 +535,8 @@ class ModelIterate:
         return None
 
         
-    def applyBCs(self,*bcs):
-        if bcs:
-            BCs=bcs[0]
-        else:
-            BCs=self.parent.BCs
+    def applyBCs(self,time=None):
+        BCs=self.parent.BCs
         Mesh=self.mesh
         dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
         neumann=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='neumann']
@@ -581,19 +578,25 @@ class ModelIterate:
 
         for edge in neumann:
             try:
-                self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True)
+                if time is not None:
+                    self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True,time=time)
+                else:
+                    self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True)
             except KeyError: # If we have no condition we are just taking 0 neumann
                 pass
 
         for edge in dirichlet:
             try:
-                self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
+                if time is not None:
+                    self.applyDirichlet(edge_nodes[edge],b_funcs[edge],time=time)
+                else:
+                    self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
             except KeyError:
                 self.applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
                 # maybe throw the error though?
 
 
-    def applyNeumann(self,edge_nodes,function,normal=True,flux=True): #TODO make non-normal stuff, non-flux  possible
+    def applyNeumann(self,edge_nodes,function,normal=True,flux=True,time=None): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
         for node in edge_nodes:
             for j,els in self.mesh.nodes[node].neighbors.items():
@@ -602,17 +605,26 @@ class ModelIterate:
                         if self.mesh.elements[el].kind=='Line':
                             if not flux:
                                 raise TypeError('You need to specify the BC as a flux (e.g. divide out k in diffusion)')
-                            if normal:
-                                self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                            if time is not None:
+                                if normal:
+                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                else:
+                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                             else:
-                                self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                if normal:
+                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                else:
+                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
 
-    def applyDirichlet(self,edge_nodes,function):
+    def applyDirichlet(self,edge_nodes,function,time=None):
         """Let's apply an essential boundary condition"""
         for node in edge_nodes:
             self.matrix[node-1,node-1]=1.0
-            self.rhs[node-1]=function(self.mesh.nodes[node].coords())
+            if time is not None:
+                self.rhs[node-1]=function(self.mesh.nodes[node].coords(),time)
+            else:
+                self.rhs[node-1]=function(self.mesh.nodes[node].coords())
             for j in self.mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
                 if not j in edge_nodes: 
                     # Check if this neighboring node is on the edge
@@ -702,13 +714,20 @@ class LinearModel(ModelIterate):
     """A Linear Model Iterate"""
     # Basically the same as a model iterate, add a method to solve things
     kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,BCs=None,**kwargs):
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,**kwargs):
         self.MakeMatrixEQ(max_nei=max_nei)
-        if BCs is not None:
-            self.applyBCs(BCs)
-        else:
-            self.applyBCs()
-        return self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+        if time is not None:
+            if 'BDF1' in kwargs:
+                self.matrix=kwargs['timestep']*self.matrix-diags(np.ones(self.mesh.numnodes),0)
+                self.rhs=kwargs['timestep']*self.rhs-kwargs['prev']
+            elif 'BDF2' in kwargs:
+                self.matrix=self.matrix-diags()
+            else:
+                raise ValueError('Cannot do that timestepping stategy')
+
+        self.applyBCs(time=time)   
+        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+        return sol
 
 
 class NonLinearModel:
@@ -720,7 +739,7 @@ class TimeDependentModel:
     """A time dependent model"""
 
 
-    def __init__(self,model,timestep,n_steps,initial_condition,method='BDF2',lin_method='BiCGStab',precond='LU',lin_tolerance=1.0e-5):
+    def __init__(self,model,timestep,n_steps,initial_condition,method='BDF1',lin_method='BiCGStab',precond='LU',lin_tolerance=1.0e-5):
         """We are doing this as a class to organize the results, but init does all computation"""
         if not type(model)==Model:
             raise TypeError('Model must be of class Model')
@@ -752,23 +771,62 @@ class TimeDependentModel:
 
 
     def solveIt(self):
-        sol=[]
+        sol=[np.array([self.ic(pt) for pt in self.model.mesh.coords])]
         if self.model.eqn.lin:
             iterate=LinearModel
         else:
             iterate=NonLinearModel
         if self.method=='BDF2':
-            for i in range(self.n_steps):
+            time=self.timestep
+            equation=self.model.eqn
+            model_iterate=iterate(self.model,equation)
+            sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
+            for i in range(2,self.n_steps):
                 time=i*self.timestep
                 equation=self.model.eqn
                 model_iterate=iterate(self.model,equation)
-                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,BCs={edge:(bc[0],lambda x: bc[1](x,time)) for edge,bc in self.model.BCs.items()}))
-                self.mi=model_iterate
+                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,timestep=self.timestep))
+        elif self.method=='BDF1':
+            for i in range(1,(self.n_steps+1)):
+                time=i*self.timestep
+                print('Timestep {:d}, real time {:f}'.format(i,time))
+                equation=self.model.eqn
+                model_iterate=iterate(self.model,equation)
+                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
         else:
             raise ValueError('Not a supported timestepping method. Use BDF2.')
         return sol
 
+    def plotSolution(self,iterate=-1,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+        mat_sol=self.sparse2mat(iterate, x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+        if savesol:
+            self.matsol=mat_sol
+        fig=plt.figure(figsize=figsize)
+        if threeD:
+            ax = fig.add_subplot(111, projection='3d')
+            ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[iterate],cmap=cm.jet)
+        else:
+            ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol[iterate]),50))
+            plt.colorbar(ctr)
+        if savefig is not None:
+            plt.savefig(savefig)
+        if show:
+            plt.show()
+        return mat_sol
 
+    def sparse2mat(self, iterate, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+        """Grid up some sparse, potentially concave data"""
+        coords=self.model.mesh.coords
+        data=self.sol[iterate]
+        tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+        ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+        XI, YI = np.meshgrid(tx, ty)
+        ZI = griddata(coords, data, (XI, YI), method='linear')
+        tree = KDTree(coords)
+        dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+        dist = dist.reshape(XI.shape)
+        ZI[dist > cutoff_dist] = np.nan
+        return [tx, ty, ZI]
 class ConvergenceError(Exception):
     """Error for bad iterative method result"""
 
@@ -795,11 +853,11 @@ def main():
 
     mod=Model('testmesh.msh',td=True)
     mod.add_equation(equationsFEM.diffusion())
-    mod.add_BC('dirichlet',1,lambda x,t: 10.0)
-    mod.add_BC('neumann',2,lambda x,t:-1.0) # 'dirichlet',2,lambda x: 10.0)
-    mod.add_BC( 'dirichlet',3,lambda x,t: abs(x[1]-5.0)+5.0)
+    mod.add_BC('dirichlet',1,lambda x,t: 26.0)
+    mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
+    mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
     mod.add_BC('neumann',4,lambda x,t:0.0)
-    mi=TimeDependentModel(mod,1.0,2,lambda x:0.0)
+    mi=TimeDependentModel(mod,0.1,200,lambda x:1+(x[0]-5)**2)
     return m,mi
 
 
