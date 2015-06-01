@@ -14,10 +14,12 @@ import numpy as np
 from scipy.linalg import solve
 from scipy.sparse.linalg import bicgstab,cg,spsolve,gmres,spilu,LinearOperator
 import matplotlib.pyplot as plt
-from equationsFEM import Equation
+import matplotlib.animation as mpl_an
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
+import mpl_toolkits.mplot3d.axes3d as p3
 from warnings import warn
+from equationsFEM import Equation
 from os.path import splitext
 from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
@@ -510,7 +512,7 @@ class ModelIterate:
             self.eqn=self.parent.eqn
     
 
-    def MakeMatrixEQ(self,max_nei=12,**kwargs):
+    def MakeMatrixEQ(self,max_nei=12,parkwargs={}):
         """Make the matrix form, max_nei is the most neighbors/element"""
         # We can ignore trailing zeros as long as we allocate space
         # I.e. go big with max_nei
@@ -523,12 +525,12 @@ class ModelIterate:
         for i,node1 in self.mesh.nodes.items():
             rows[nnz]=i-1 
             cols[nnz]=i-1
-            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=kwargs)
+            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
             nnz += 1
             for j,node2_els in node1.neighbors.items():
                 rows[nnz]=i-1
                 cols[nnz]=j-1
-                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=kwargs)
+                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
                 nnz += 1
         self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes))
         self.rhs=rhs
@@ -715,17 +717,17 @@ class LinearModel(ModelIterate):
     # Basically the same as a model iterate, add a method to solve things
     kind='Linear'
     def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,**kwargs):
-        self.MakeMatrixEQ(max_nei=max_nei)
+        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
+        self.applyBCs(time=time)   
         if time is not None:
             if 'BDF1' in kwargs:
-                self.matrix=kwargs['timestep']*self.matrix-diags(np.ones(self.mesh.numnodes),0)
-                self.rhs=kwargs['timestep']*self.rhs-kwargs['prev']
+                self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
+                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
             elif 'BDF2' in kwargs:
                 self.matrix=self.matrix-diags()
             else:
                 raise ValueError('Cannot do that timestepping stategy')
 
-        self.applyBCs(time=time)   
         sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
         return sol
 
@@ -797,13 +799,14 @@ class TimeDependentModel:
             raise ValueError('Not a supported timestepping method. Use BDF2.')
         return sol
 
+
     def plotSolution(self,iterate=-1,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
         mat_sol=self.sparse2mat(iterate, x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
         if savesol:
             self.matsol=mat_sol
         fig=plt.figure(figsize=figsize)
         if threeD:
-            ax = fig.add_subplot(111, projection='3d')
+            ax = p3.Axes3D(fig) 
             ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[iterate],cmap=cm.jet)
         else:
             ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol[iterate]),50))
@@ -813,6 +816,40 @@ class TimeDependentModel:
         if show:
             plt.show()
         return mat_sol
+
+    def plotAnimate(self,num,ax):
+        iterate=0
+        while iterate<=self.n_steps:
+            iterate += 1
+            yield ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[iterate],cmap=cm.jet)
+
+    def animate(self,show=False,save=None):
+        fig=plt.figure()
+        ax=p3.Axes3D(fig)
+        ax.set_xlim3d([min(self.model.mesh.coords[:,0]),max(self.model.mesh.coords[:,0])])
+        ax.set_ylim3d([min(self.model.mesh.coords[:,1]),max(self.model.mesh.coords[:,1])])
+        ax.set_zlim3d([0.9*min(self.sol[0]),1.1*max(self.sol[0])])
+        class nextPlot:
+            def __init__(self,outer):
+                self.iterate=0
+                self.outer=outer
+            def __call__(self,num):
+                self.iterate+=1
+                ax.clear()
+                ax.set_xlim3d([min(self.outer.model.mesh.coords[:,0]),max(self.outer.model.mesh.coords[:,0])])
+                ax.set_ylim3d([min(self.outer.model.mesh.coords[:,1]),max(self.outer.model.mesh.coords[:,1])])
+                ax.set_zlim3d([0.9*min(self.outer.sol[0]),1.1*max(self.outer.sol[0])])
+                return ax.plot_trisurf(self.outer.model.mesh.coords[:,0],self.outer.model.mesh.coords[:,1],Z=self.outer.sol[self.iterate-1],cmap=cm.jet)
+        np=nextPlot(self)
+        an=mpl_an.FuncAnimation(fig, np, self.n_steps-1, interval=5000, blit=False)
+        Writer = mpl_an.writers['ffmpeg']
+        writer = Writer(fps=15, metadata=dict(artist='David Lilien'), bitrate=1800)
+        if save is not None:
+            an.save(save,writer=writer)
+        if show:
+            plt.show()
+        return None
+
 
     def sparse2mat(self, iterate, x_steps=500, y_steps=500, cutoff_dist=2000.0):
         """Grid up some sparse, potentially concave data"""
@@ -827,6 +864,8 @@ class TimeDependentModel:
         dist = dist.reshape(XI.shape)
         ZI[dist > cutoff_dist] = np.nan
         return [tx, ty, ZI]
+
+
 class ConvergenceError(Exception):
     """Error for bad iterative method result"""
 
@@ -851,14 +890,25 @@ def main():
     m=LinearModel(mo)
     m.iterate()
 
+
+    admo=Model('testmesh.msh')
+    admo.add_equation(equationsFEM.advectionDiffusion())
+    admo.add_BC('dirichlet',1,lambda x: 15.0)
+    admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
+    admo.add_BC( 'dirichlet',3,lambda x: 5.0)
+    admo.add_BC('neumann',4,lambda x:0.0)
+    am=LinearModel(admo)
+    am.iterate(v=lambda x:np.array([10.0,0.0]))
+
     mod=Model('testmesh.msh',td=True)
     mod.add_equation(equationsFEM.diffusion())
     mod.add_BC('dirichlet',1,lambda x,t: 26.0)
     mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
     mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
     mod.add_BC('neumann',4,lambda x,t:0.0)
-    mi=TimeDependentModel(mod,0.1,200,lambda x:1+(x[0]-5)**2)
-    return m,mi
+    mi=TimeDependentModel(mod,10.0,60,lambda x:1+(x[0]-5)**2)
+    mi.animate(show=False,save='decay.mp4')
+    return m,am,mi
 
 
 if __name__ == '__main__':
