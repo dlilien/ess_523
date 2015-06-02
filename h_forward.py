@@ -15,7 +15,7 @@ import  equationsFEM
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
 from glib3 import gtif2mat_fn
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 
 class velocityDEMs:
@@ -48,20 +48,47 @@ class accumulationDEM:
 
 
     def __call__(self,pt):
-        return self.aspline(pt[1],pt[0])[0]
+        return 1.0e-3*self.aspline(pt[1],pt[0])[0]
 
+class thickDEM:
+    def __init__(self):
+        bb_fn='/users/dlilien/smith/bed_data/ZBgeo.tif'
+        x,y,a=gtif2mat_fn(bb_fn)
+        a[np.isnan(a)]=0
+        self.aspline=RectBivariateSpline(y,x,a)
+        surf_fn='/users/dlilien/smith/bed_data/dshean/smoothed_combination.tif'
+        x,y,b=gtif2mat_fn(surf_fn)
+        self.bspline=RectBivariateSpline(np.flipud(y),x,np.flipud(b))
+
+
+
+    def __call__(self,pt):
+        return self.bspline(pt[1],pt[0])[0]-self.aspline(pt[1],pt[0])[0]
+
+
+class k:
+    def __init__(self,vel):
+        self.vel=vel
+    def __call__(self,pt):
+        v=self.vel(pt)
+        return 7.0e3/2.0*np.outer(v,v)/min(1.0,np.linalg.norm(v))
 
 def main(): 
-    admo=cfm.Model('smithmesh.msh')
+    admo=cfm.Model('fullsmithmesh.msh')
     vel=velocityDEMs()
+    diffu=k(vel)
     acc=accumulationDEM()
     admo.add_equation(equationsFEM.advectionDiffusion())
-    admo.add_BC('dirichlet',2,lambda x: 10.0)
-    admo.add_BC('dirichlet',4,lambda x:10.0) # 'dirichlet',2,lambda x: 10.0)
-    admo.add_BC( 'dirichlet',32,lambda x: 10.0)
-    admo.add_BC('dirichlet',54,lambda x:10.0)
+    smbbm=thickDEM()
+    admo.add_BC('dirichlet',2,smbbm)
+    admo.add_BC('dirichlet',4,smbbm) # 'dirichlet',2,lambda x: 10.0)
+    admo.add_BC( 'dirichlet',32,smbbm)
+    admo.add_BC('dirichlet',54,smbbm)
     am=cfm.LinearModel(admo)
-    am.iterate(v=vel,f=acc)
+    am.iterate(v=vel,f=acc,k=diffu)
+    am.plotSolution(savefig='figs/wild2D.eps',threeD=False,cutoff=5000.0,x_steps=200,y_steps=200,savesol=True)
+    am.plotSolution(savefig='figs/wild3D.eps')
+
 
     return am
         
