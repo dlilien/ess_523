@@ -503,38 +503,132 @@ class ModelIterate:
     """This object makes matrix, forms a solution, etc"""
 
 
-    def __init__(self,model,*eqn):
+    def __init__(self,model,*eqn,**kwargs):
         self.parent=model
         self.mesh=self.parent.mesh
         if eqn:
             self.eqn=eqn[0]
         else:
             self.eqn=self.parent.eqn
+        if 'DOFs' in kwargs:
+            self.dofs=kwargs['DOFs']
+        elif 'dofs' in kwargs:
+            self.dofs=kwargs['dofs']
+        else:
+            self.dofs=1
+        if not type(self.dofs)==int:
+            raise TypeError('Degrees of freedom must be an integer')
+
     
 
     def MakeMatrixEQ(self,max_nei=12,parkwargs={}):
         """Make the matrix form, max_nei is the most neighbors/element"""
-        # We can ignore trailing zeros as long as we allocate space
-        # I.e. go big with max_nei
-        #TODO automatic max_nei
-        rows=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
-        cols=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
-        data=np.zeros(max_nei*self.mesh.numnodes)
-        rhs=np.zeros(self.mesh.numnodes)
-        nnz=0
-        for i,node1 in self.mesh.nodes.items():
-            rows[nnz]=i-1 
-            cols[nnz]=i-1
-            data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
-            nnz += 1
-            for j,node2_els in node1.neighbors.items():
-                rows[nnz]=i-1
-                cols[nnz]=j-1
-                data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
+        if self.dofs==1:
+            # The easy version, scalar variable to solve for
+
+            # Empty vectors to make the sparse matrix
+            rows=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
+            cols=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
+            data=np.zeros(max_nei*self.mesh.numnodes)
+
+            # zero vector for the rhs
+            rhs=np.zeros(self.mesh.numnodes)
+
+            # count the number of non-zeros
+            nnz=0
+
+            for i,node1 in self.mesh.nodes.items():
+
+                # Do the diagonal element
+                rows[nnz]=i-1 
+                cols[nnz]=i-1
+                data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
                 nnz += 1
-        self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes))
-        self.rhs=rhs
-        return None
+
+                for j,node2_els in node1.neighbors.items():
+                    # Do the off diagonals, do not assume symmetry
+                    rows[nnz]=i-1
+                    cols[nnz]=j-1
+                    data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
+                    nnz += 1
+
+            # store what we have done
+            self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes,self.mesh.numnodes))
+            self.rhs=rhs
+            return None
+
+        elif self.dofs==2:
+            # Set things up so we can do velocity
+
+            # Empty vectors to accept the sparse info, make them large for cross terms
+            rows=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
+            cols=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
+            data=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2)
+
+            #Vector for the rhs
+            rhs=np.zeros(self.mesh.numnodes*self.dofs)
+
+            #Count how many entries we have
+            nnz=0
+
+            for i,node1 in self.mesh.nodes.items():
+                # Order things u1,v1,u2,v2,...
+                # Still loop in the same way, just be careful with indexing
+                # set things up for the diagonal for the first argument
+                rows[nnz]=i-1 
+                cols[nnz]=i-1
+
+                # for the second argument
+                rows[nnz+1]=i
+                cols[nnz+1]=i
+
+                # for the cross-term between the two components
+                rows[nnz+2]=i
+                cols[nnz+2]=i-1
+
+                # for the other cross-term
+                rows[nnz+3]=i-1
+                cols[nnz+3]=i
+
+                # Lazy, no checking for correct return from equation but so it goes
+                data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
+                
+                # increment things
+                nnz += 4
+
+                for j,node2_els in node1.neighbors.items():
+                    # Do the off diagonals, do not assume symmetry
+
+                    # The first component off-diagonal
+                    rows[nnz]=i-1
+                    cols[nnz]=j-1
+
+                    # The second component off-diagonal
+                    rows[nnz+1]=i
+                    cols[nnz]=j
+
+                    # for the cross-term between the two components
+                    rows[nnz+2]=i
+                    cols[nnz+2]=j-1
+
+                    # for the other cross-term
+                    rows[nnz+3]=i-1
+                    cols[nnz+3]=j
+
+                    # Again, we hope the return from this equation is good
+                    data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
+
+                    # increment again
+                    nnz += 4
+
+            # set up our matrix for real
+            self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs))
+            self.rhs=rhs
+            return None
+
+        else:
+            raise ValueError('Cannnot do more than 2 dofs')
+
 
         
     def applyBCs(self,time=None):
@@ -600,39 +694,113 @@ class ModelIterate:
 
     def applyNeumann(self,edge_nodes,function,normal=True,flux=True,time=None): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
-        for node in edge_nodes:
-            for j,els in self.mesh.nodes[node].neighbors.items():
-                if j in edge_nodes:
-                    for k,el in enumerate(els):
-                        if self.mesh.elements[el].kind=='Line':
-                            if not flux:
-                                raise TypeError('You need to specify the BC as a flux (e.g. divide out k in diffusion)')
-                            if time is not None:
-                                if normal:
-                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+        if self.dofs==1:
+            for node in edge_nodes:
+                for j,els in self.mesh.nodes[node].neighbors.items():
+                    if j in edge_nodes:
+                        for k,el in enumerate(els):
+                            if self.mesh.elements[el].kind=='Line':
+                                if not flux:
+                                    raise TypeError('You need to specify the BC as a flux (e.g. divide out k in diffusion)')
+                                if time is not None:
+                                    if normal:
+                                        self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                    else:
+                                        self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                 else:
-                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                            else:
-                                if normal:
-                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                    if normal:
+                                        self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                    else:
+                                        self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+
+        elif self.dofs==2:
+             for node in edge_nodes:
+                for j,els in self.mesh.nodes[node].neighbors.items():
+                    if j in edge_nodes:
+                        for k,el in enumerate(els):
+                            if self.mesh.elements[el].kind=='Line':
+                                if not flux:
+                                    raise TypeError('You need to specify the BC as a flux (e.g. divide out k in diffusion)')
+                                if time is not None:
+                                    if normal: # Normal, time-dependent, 2dofs
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1])[1],time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+
+                                    else: # Non-normal, time-dependent, 2dofs
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                 else:
-                                    self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                    if normal: # Normal, steady state, 2dofs
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[1]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+
+                                    else: # Non-normal, steady state, 2dofs
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+
+        else:
+            raise ValueError('Cannot do more than 2 dofs')
 
 
     def applyDirichlet(self,edge_nodes,function,time=None):
         """Let's apply an essential boundary condition"""
-        for node in edge_nodes:
-            self.matrix[node-1,node-1]=1.0
-            if time is not None:
-                self.rhs[node-1]=function(self.mesh.nodes[node].coords(),time)
-            else:
-                self.rhs[node-1]=function(self.mesh.nodes[node].coords())
-            for j in self.mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
-                if not j in edge_nodes: 
-                    # Check if this neighboring node is on the edge
-                    self.rhs[j-1]=self.rhs[j-1]-self.matrix[j-1,node-1]*self.rhs[node-1]
-                self.matrix[node-1,j-1]=0.0
-                self.matrix[j-1,node-1]=0.0   
+        if self.dofs==1:
+            for node in edge_nodes:
+                self.matrix[node-1,node-1]=1.0
+                if time is not None:
+                    self.rhs[node-1]=function(self.mesh.nodes[node].coords(),time)
+                else:
+                    self.rhs[node-1]=function(self.mesh.nodes[node].coords())
+                for j in self.mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
+                    if not j in edge_nodes: 
+                        # Check if this neighboring node is on the edge
+                        self.rhs[j-1]=self.rhs[j-1]-self.matrix[j-1,node-1]*self.rhs[node-1]
+                    self.matrix[node-1,j-1]=0.0
+                    self.matrix[j-1,node-1]=0.0   
+        elif self.dofs==2:
+                # We now have 4 terms relating to this element itself
+                self.matrix[2*node-1,2*node-1]=1.0
+                self.matrix[2*node,2*node]=1.0
+                self.matrix[2*node,2*node-1]=0.0
+                self.matrix[2*node-1,2*node]=0.0
+
+                # Set the values on the right hand side
+                if time is not None:
+                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords(),time)[0]
+                    self.rhs[2*node]=function(self.mesh.nodes[node].coords(),time)[1]
+                else:
+                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords())[0]
+                    self.rhs[2*node]=function(self.mesh.nodes[node].coords())[1]
+
+                # zero out the off-diagonal elements to get the condition correct
+                # and keep symmetry if we have it
+                for j in self.mesh.nodes[node].neighbors.keys(): # Get the neighboring nodes
+                    if not j in edge_nodes: 
+                        # Check if this neighboring node is on the edge
+
+                        # We have four elements to zero out
+                        self.rhs[2*j-1]=self.rhs[2*j-1]-self.matrix[2*j-1,2*node-1]*self.rhs[2*node-1]
+                        self.rhs[2*j]=self.rhs[2*j]-self.matrix[2*j,2*node]*self.rhs[2*node]
+                        # Cross-terms
+                        self.rhs[2*j-1]=self.rhs[2*j-1]-self.matrix[2*j-1,2*node]*self.rhs[2*node]
+                        self.rhs[2*j]=self.rhs[2*j]-self.matrix[2*j,2*node-1]*self.rhs[2*node-1]
+
+                    # zero out each of these, and also the symmetric part
+                    # all u
+                    self.matrix[2*node-1,2*j-1]=0.0
+                    self.matrix[2*j-1,2*node-1]=0.0 
+                    # all v 
+                    self.matrix[2*node,2*j]=0.0
+                    self.matrix[2*j,2*node]=0.0
+                    # uv
+                    self.matrix[2*node-1,2*j]=0.0
+                    self.matrix[2*j,2*node-1]=0.0
+                    # vu
+                    self.matrix[2*node,2*j-1]=0.0
+                    self.matrix[2*j-1,2*node]=0.0
+
+        else:
+            raise ValueError('Cannot do more than 2 dofs')
 
 
     def solveIt(self,method='BiCGStab',precond='LU',tolerance=1.0e-5):
@@ -680,36 +848,82 @@ class ModelIterate:
 
 
     def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
-        mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
-        if savesol:
-            self.matsol=mat_sol
-        fig=plt.figure(figsize=figsize)
-        if threeD:
-            ax = fig.add_subplot(111, projection='3d')
-            ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=self.sol,cmap=cm.jet)
-        else:
-            ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
-            plt.colorbar(ctr)
-        if savefig is not None:
-            plt.savefig(savefig)
-        if show:
-            plt.show()
-        return mat_sol
+        if self.dofs==1:
+            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            if savesol:
+                self.matsol=mat_sol
+            fig=plt.figure(figsize=figsize)
+            if threeD:
+                ax = fig.add_subplot(111, projection='3d')
+                ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=self.sol,cmap=cm.jet)
+            else:
+                ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+                plt.colorbar(ctr)
+            if savefig is not None:
+                plt.savefig(savefig)
+            if show:
+                plt.show()
+            return mat_sol
+
+        elif self.dofs==2:
+
+            # Do a quick check before we do the slow steps
+            if savefig is not None:
+                if not len(savefig)==self.dofs:
+                    raise ValueError('savefig must be list of strings same length as dofs')
+
+            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            if savesol:
+                # we want to have the option of not re-computing
+                self.matsol=mat_sol
+
+            # Do the plotting
+            for i,ms in enumerate(mat_sol[2:]):
+                fig=plt.figure(figsize=figsize)
+                if threeD:
+                    ax = fig.add_subplot(111, projection='3d')
+                    ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=ms,cmap=cm.jet)
+                else:
+                    ctr=plt.contourf(mat_sol[0],mat_sol[1],ms,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+                    plt.colorbar(ctr)
+                    plt.title('Solution component {:d}'.format(i))
+                if savefig is not None:
+                    plt.savefig(savefig[i])
+            if show:
+                plt.show()
+            return mat_sol
+           
 
 
     def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
         """Grid up some sparse, potentially concave data"""
         coords=self.mesh.coords
-        data=self.sol
-        tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
-        ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
-        XI, YI = np.meshgrid(tx, ty)
-        ZI = griddata(coords, data, (XI, YI), method='linear')
-        tree = KDTree(coords)
-        dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-        dist = dist.reshape(XI.shape)
-        ZI[dist > cutoff_dist] = np.nan
-        return [tx, ty, ZI]
+        if self.dofs==1:
+            data=self.sol
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI]
+
+        elif self.dofs==2:
+            data1=self.sol[::2]
+            data2=self.sol[1::2]
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data1, (XI, YI), method='linear')
+            ZI2 = griddata(coords, data2, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            ZI2[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI, ZI2]
 
 
 class LinearModel(ModelIterate):
