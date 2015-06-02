@@ -432,6 +432,7 @@ class Model:
             else:
                 raise TypeError('Mesh input not understood')
             self.mesh.CreateBases()
+
         self.BCs={}
 
         # Do a bunch of rigamarole to allow a couple kwargs for linearity
@@ -454,6 +455,7 @@ class Model:
             print('Defaulting to steady state model')
             self.time_dep=False
 
+
     def add_equation(self,eqn):
         try:
             if not Equation in type(eqn).__bases__:
@@ -461,6 +463,7 @@ class Model:
         except AttributeError:
             raise TypeError('Need equation of type equationsFEM.Equation')
         self.eqn=eqn
+        self.dofs=eqn.dofs
         if eqn.lin:
             self.linear=True
         else:
@@ -494,9 +497,9 @@ class Model:
 
     def makeIterate(self):
         if self.linear:
-            return LinearModel(self)
+            return LinearModel(self,dofs=self.eqn.dofs)
         else:
-            return NonLinearModel(self)
+            return NonLinearModel(self,dofs=self.eqn.dofs)
 
 
 class ModelIterate:
