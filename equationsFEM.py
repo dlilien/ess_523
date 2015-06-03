@@ -137,6 +137,8 @@ class shallowShelf(Equation):
         if hasattr(self,'b'):
             b=self.b
         else:
+            # We would like b to be assigned element-wise and then to force it piecewise-constant
+            # Deal with complexity on the model end for now?
             if 'b' in kwargs:
                 b = kwargs['b']
             else:
@@ -152,6 +154,14 @@ class shallowShelf(Equation):
             else:
                 raise RuntimeError('Need ice thickness (thickness or h kwarg) for SSA')
 
+        if hasattr(self,'dzs'):
+            dzs=self.dzs
+        else:
+            if 'dzs' in kwargs:
+                dzs = kwargs['dzs']
+            else:
+                raise AttributeError('Need surface (dzs kwarg) for SSA')
+
         if 'nu' in kwargs:
             nu = kwargs['nu']
         elif 'visc' in kwargs:
@@ -165,31 +175,37 @@ class shallowShelf(Equation):
         # Now loop through the neighboring elements
         for i,elm in enumerate(elements):
 
-            # The indices of each node within the element, to tell us which basis to use
-            n1b=elm[1].nodes.index(node1)
+
+            # The indices of each node within the element, to tell us which weights and bases to use
+
+            n1b=elm[1].nodes.index(node1) 
+            # this should be the index of the weight/equation (j direction in the supplement)
+
             n2b=elm[1].nodes.index(node2)
-            #TODO the integrals
+            # this is the index of the basis function (i direction in the supplement)
+
+            #gps=[(gp[0],elm[1].F(gp[1:])) for gp in elm[1].gpts]
+            # indices based on a 2x2 submatrix of A for i,j
+            # 1,1
+            ints[i,0]=elm[1].area*(-b**2+h*nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            # 2,2
+            ints[i,1]=elm[1].area*(-b**2+h*nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+            # 1,2
+            ints[i,2]=elm[1].area*nu*h*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1])
+            # 2,1
+            ints[i,4]=elm[1].area*nu*h*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0])
 
         if rhs:
             # TODO the integrals, check for more parameters?
-            return #TODO
-
-
-
-
-
-
-
-
-
-        return nu,h,b #TODO delete this
-    
-
-
-
+            ints_rhs=np.zeros((max_nei,2))
+            for i,elm in enumerate(elements):
+                # 1st SSA eqn (d/dx) rhs
+                ints_rhs[i,0]=self.rho*self.g*h*dzs*elm[1].area
+                # 2nd SSA eqn (d/dy) rhs
+                ints_rhs[i,1]=self.rho*self.g*h*dzs*elm[1].area
             
+            # return with rhs
+            return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3]),np.sum(ints_rhs[:,0]),np.sum(ints_rhs[:,1])
 
-            
-
-
-
+        # return if rhs is false
+        return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3])

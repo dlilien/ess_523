@@ -586,12 +586,12 @@ class ModelIterate:
                 cols[nnz+1]=i
 
                 # for the cross-term between the two components
-                rows[nnz+2]=i
-                cols[nnz+2]=i-1
+                rows[nnz+2]=i-1
+                cols[nnz+2]=i
 
                 # for the other cross-term
-                rows[nnz+3]=i-1
-                cols[nnz+3]=i
+                rows[nnz+3]=i
+                cols[nnz+3]=i-1
 
                 # Lazy, no checking for correct return from equation but so it goes
                 data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
@@ -608,17 +608,17 @@ class ModelIterate:
 
                     # The second component off-diagonal
                     rows[nnz+1]=i
-                    cols[nnz]=j
+                    cols[nnz+1]=j
 
                     # for the cross-term between the two components
-                    rows[nnz+2]=i
-                    cols[nnz+2]=j-1
+                    rows[nnz+2]=i-1
+                    cols[nnz+2]=j
 
                     # for the other cross-term
-                    rows[nnz+3]=i-1
-                    cols[nnz+3]=j
+                    rows[nnz+3]=i
+                    cols[nnz+3]=j-1
 
-                    # Again, we hope the return from this equation is good
+                    # Again, we hope the return from this equation is good, dumb things are happening with i,j in the supplement, so these don't match
                     data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
 
                     # increment again
@@ -631,7 +631,6 @@ class ModelIterate:
 
         else:
             raise ValueError('Cannnot do more than 2 dofs')
-
 
         
     def applyBCs(self,time=None):
@@ -896,7 +895,6 @@ class ModelIterate:
                 plt.show()
             return mat_sol
            
-
 
     def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
         """Grid up some sparse, potentially concave data"""
