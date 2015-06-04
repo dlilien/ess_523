@@ -25,7 +25,6 @@ from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
 from scipy.interpolate import griddata
 Axes3D # Avoid the warning
-bc=0
 
 
 class Node:
@@ -522,7 +521,6 @@ class ModelIterate:
         if not type(self.dofs)==int:
             raise TypeError('Degrees of freedom must be an integer')
 
-    
 
     def MakeMatrixEQ(self,max_nei=12,parkwargs={}):
         """Make the matrix form, max_nei is the most neighbors/element"""
@@ -578,20 +576,20 @@ class ModelIterate:
                 # Order things u1,v1,u2,v2,...
                 # Still loop in the same way, just be careful with indexing
                 # set things up for the diagonal for the first argument
-                rows[nnz]=i-1 
-                cols[nnz]=i-1
+                rows[nnz]=2*(i-1) 
+                cols[nnz]=2*(i-1)
 
                 # for the second argument
-                rows[nnz+1]=i
-                cols[nnz+1]=i
+                rows[nnz+1]=2*i-1
+                cols[nnz+1]=2*i-1
 
                 # for the cross-term between the two components
-                rows[nnz+2]=i-1
-                cols[nnz+2]=i
+                rows[nnz+2]=2*(i-1)
+                cols[nnz+2]=2*i-1
 
                 # for the other cross-term
-                rows[nnz+3]=i
-                cols[nnz+3]=i-1
+                rows[nnz+3]=2*i-1
+                cols[nnz+3]=2*(i-1)
 
                 # Lazy, no checking for correct return from equation but so it goes
                 data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
@@ -603,20 +601,20 @@ class ModelIterate:
                     # Do the off diagonals, do not assume symmetry
 
                     # The first component off-diagonal
-                    rows[nnz]=i-1
-                    cols[nnz]=j-1
+                    rows[nnz]=2*(i-1)
+                    cols[nnz]=2*(j-1)
 
                     # The second component off-diagonal
-                    rows[nnz+1]=i
-                    cols[nnz+1]=j
+                    rows[nnz+1]=2*i-1
+                    cols[nnz+1]=2*j-1
 
                     # for the cross-term between the two components
-                    rows[nnz+2]=i-1
-                    cols[nnz+2]=j
+                    rows[nnz+2]=2*(i-1)
+                    cols[nnz+2]=2*j-1
 
                     # for the other cross-term
-                    rows[nnz+3]=i
-                    cols[nnz+3]=j-1
+                    rows[nnz+3]=2*i-1
+                    cols[nnz+3]=2*(j-1)
 
                     # Again, we hope the return from this equation is good, dumb things are happening with i,j in the supplement, so these don't match
                     data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
@@ -725,20 +723,20 @@ class ModelIterate:
                                     raise TypeError('You need to specify the BC as a flux (e.g. divide out k in diffusion)')
                                 if time is not None:
                                     if normal: # Normal, time-dependent, 2dofs
-                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1])[1],time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*(node-1)] = self.rhs[2*(node-1)]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]),time)[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1])[1],time)*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
                                     else: # Non-normal, time-dependent, 2dofs
-                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*(node-1)] = self.rhs[2*(node-1)]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]),time)[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                 else:
                                     if normal: # Normal, steady state, 2dofs
-                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[1]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*(node-1)] = self.rhs[2*(node-1)]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[0]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*function(self.mesh.elements[el].F(gpt[1:-1]))[1]*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
                                     else: # Non-normal, steady state, 2dofs
-                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2*node] = self.rhs[2*node]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*(node-1)] = self.rhs[2*(node-1)]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[0],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[2*node-1] = self.rhs[2*node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[1],self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
         else:
             raise ValueError('Cannot do more than 2 dofs')
@@ -760,11 +758,12 @@ class ModelIterate:
                     self.matrix[node-1,j-1]=0.0
                     self.matrix[j-1,node-1]=0.0   
         elif self.dofs==2:
+            for node in edge_nodes:
                 # We now have 4 terms relating to this element itself
+                self.matrix[2*(node-1),2*(node-1)]=1.0
                 self.matrix[2*node-1,2*node-1]=1.0
-                self.matrix[2*node,2*node]=1.0
-                self.matrix[2*node,2*node-1]=0.0
-                self.matrix[2*node-1,2*node]=0.0
+                self.matrix[2*node-1,2*(node-1)]=0.0
+                self.matrix[2*(node-1),2*node-1]=0.0
 
                 # Set the values on the right hand side
                 if time is not None:
@@ -781,25 +780,25 @@ class ModelIterate:
                         # Check if this neighboring node is on the edge
 
                         # We have four elements to zero out
+                        self.rhs[2*(j-1)]=self.rhs[2*(j-1)]-self.matrix[2*(j-1),2*(node-1)]*self.rhs[2*(node-1)]
                         self.rhs[2*j-1]=self.rhs[2*j-1]-self.matrix[2*j-1,2*node-1]*self.rhs[2*node-1]
-                        self.rhs[2*j]=self.rhs[2*j]-self.matrix[2*j,2*node]*self.rhs[2*node]
                         # Cross-terms
-                        self.rhs[2*j-1]=self.rhs[2*j-1]-self.matrix[2*j-1,2*node]*self.rhs[2*node]
-                        self.rhs[2*j]=self.rhs[2*j]-self.matrix[2*j,2*node-1]*self.rhs[2*node-1]
+                        self.rhs[2*(j-1)]=self.rhs[2*(j-1)]-self.matrix[2*(j-1),2*node-1]*self.rhs[2*node-1]
+                        self.rhs[2*j-1]=self.rhs[2*j-1]-self.matrix[2*j-1,2*(node-1)]*self.rhs[2*(node-1)]
 
                     # zero out each of these, and also the symmetric part
                     # all u
-                    self.matrix[2*node-1,2*j-1]=0.0
-                    self.matrix[2*j-1,2*node-1]=0.0 
+                    self.matrix[2*(node-1),2*(j-1)]=0.0
+                    self.matrix[2*(j-1),2*(node-1)]=0.0 
                     # all v 
-                    self.matrix[2*node,2*j]=0.0
-                    self.matrix[2*j,2*node]=0.0
+                    self.matrix[2*node-1,2*j-1]=0.0
+                    self.matrix[2*j-1,2*node-1]=0.0
                     # uv
-                    self.matrix[2*node-1,2*j]=0.0
-                    self.matrix[2*j,2*node-1]=0.0
+                    self.matrix[2*(node-1),2*j-1]=0.0
+                    self.matrix[2*j-1,2*(node-1)]=0.0
                     # vu
-                    self.matrix[2*node,2*j-1]=0.0
-                    self.matrix[2*j-1,2*node]=0.0
+                    self.matrix[2*node-1,2*(j-1)]=0.0
+                    self.matrix[2*(j-1),2*node-1]=0.0
 
         else:
             raise ValueError('Cannot do more than 2 dofs')
@@ -811,7 +810,7 @@ class ModelIterate:
             if precond=='LU':
                 p=spilu(self.matrix, drop_tol=1.0e-5)
                 M_x=lambda x: p.solve(x)
-                M=LinearOperator((self.mesh.numnodes,self.mesh.numnodes),M_x)
+                M=LinearOperator((self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs),M_x)
             elif precond is not None:
                 M=precond
         if method=='CG':
@@ -846,7 +845,6 @@ class ModelIterate:
         else:
             raise TypeError('Unknown solution method')
         return self.sol
-
 
 
     def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
@@ -931,9 +929,11 @@ class LinearModel(ModelIterate):
     """A Linear Model Iterate"""
     # Basically the same as a model iterate, add a method to solve things
     kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,**kwargs):
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
+        if parkwargs is not None:
+            kwargs.update(parkwargs)
         self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
-        self.applyBCs(time=time)   
+        self.applyBCs(time=time)
         if time is not None:
             if 'BDF1' in kwargs:
                 self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
@@ -950,6 +950,265 @@ class LinearModel(ModelIterate):
 class NonLinearModel:
     """A class for performing the solves on a nonlinear model, with the same method names"""
     kind='NonLinear'
+
+    def __init__(self,model,dofs=1):
+        self.model=model
+        self.dofs=dofs
+
+    
+    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
+
+        # Make an initial guess at the velocities. Let's just use 0s by default
+        if guess is not None:
+            old=guess
+        else:
+            old=np.zeros(self.model.mesh.numnodes*self.dofs)
+
+
+        for i in range(nl_maxiter):
+            # Loop until we have converged to within the desired tolerance
+            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
+            kwargs['gradient']=gradient(old)
+
+            mi=LinearModel(self.model,dofs=self.dofs)
+            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
+            print('Relative Change: {:f}'.format(relchange))
+
+            #Check if we converged
+            if relchange<nl_tolerance and i != 0:
+                break
+            old[:]=new
+        else:
+            raise ConvergenceError('Nonlinear solver did not converge within desired tolerance')
+
+        self.sol=new
+        return new
+
+
+
+    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+        """Grid up some sparse, potentially concave data"""
+        coords=self.model.mesh.coords
+        if self.dofs==1:
+            data=self.sol
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI]
+
+        elif self.dofs==2:
+            data1=self.sol[::2]
+            data2=self.sol[1::2]
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data1, (XI, YI), method='linear')
+            ZI2 = griddata(coords, data2, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            ZI2[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI, ZI2]
+
+
+class LinearModel(ModelIterate):
+    """A Linear Model Iterate"""
+    # Basically the same as a model iterate, add a method to solve things
+    kind='Linear'
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
+        if parkwargs is not None:
+            kwargs.update(parkwargs)
+        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
+        self.applyBCs(time=time)
+        if time is not None:
+            if 'BDF1' in kwargs:
+                self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
+                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
+            elif 'BDF2' in kwargs:
+                self.matrix=self.matrix-diags()
+            else:
+                raise ValueError('Cannot do that timestepping stategy')
+
+        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+        return sol
+
+
+class NonLinearModel:
+    """A class for performing the solves on a nonlinear model, with the same method names"""
+    kind='NonLinear'
+
+    def __init__(self,model,dofs=1):
+        self.model=model
+        self.dofs=dofs
+
+    
+    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
+
+        # Make an initial guess at the velocities. Let's just use 0s by default
+        if guess is not None:
+            old=guess
+        else:
+            old=np.zeros(self.model.mesh.numnodes*self.dofs)
+
+
+        for i in range(nl_maxiter):
+            # Loop until we have converged to within the desired tolerance
+            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
+            kwargs['gradient']=gradient(old)
+
+            mi=LinearModel(self.model,dofs=self.dofs)
+            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
+
+
+
+class LinearModel(ModelIterate):
+    """A Linear Model Iterate"""
+    # Basically the same as a model iterate, add a method to solve things
+    kind='Linear'
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
+        if parkwargs is not None:
+            kwargs.update(parkwargs)
+        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
+        self.applyBCs(time=time)
+        if time is not None:
+            if 'BDF1' in kwargs:
+                self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
+                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
+            elif 'BDF2' in kwargs:
+                self.matrix=self.matrix-diags()
+            else:
+                raise ValueError('Cannot do that timestepping stategy')
+
+        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+        return sol
+
+
+class NonLinearModel:
+    """A class for performing the solves on a nonlinear model, with the same method names"""
+    kind='NonLinear'
+
+    def __init__(self,model,dofs=1):
+        self.model=model
+        self.dofs=dofs
+
+    
+    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
+
+        # Make an initial guess at the velocities. Let's just use 0s by default
+        if guess is not None:
+            old=guess
+        else:
+            old=np.zeros(self.model.mesh.numnodes*self.dofs)
+
+
+        for i in range(nl_maxiter):
+            # Loop until we have converged to within the desired tolerance
+            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
+            kwargs['gradient']=gradient(old)
+
+            mi=LinearModel(self.model,dofs=self.dofs)
+            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
+            print('Relative Change: {:f}'.format(relchange))
+
+            #Check if we converged
+            if relchange<nl_tolerance and i != 0:
+                break
+            old[:]=new
+        else:
+            raise ConvergenceError('Nonlinear solver did not converge within desired tolerance')
+
+        self.sol=new
+        return new
+
+
+    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+        if self.dofs==1:
+            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            if savesol:
+                self.matsol=mat_sol
+            fig=plt.figure(figsize=figsize)
+            if threeD:
+                ax = fig.add_subplot(111, projection='3d')
+                ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=self.sol,cmap=cm.jet)
+            else:
+                ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+                plt.colorbar(ctr)
+            if savefig is not None:
+                plt.savefig(savefig)
+            if show:
+                plt.show()
+            return mat_sol
+
+        elif self.dofs==2:
+
+            # Do a quick check before we do the slow steps
+            if savefig is not None:
+                if not len(savefig)==self.dofs:
+                    raise ValueError('savefig must be list of strings same length as dofs')
+
+            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            if savesol:
+                # we want to have the option of not re-computing
+                self.matsol=mat_sol
+
+
+
+
+            # Do the plotting
+            for i,ms in enumerate(mat_sol[2:]):
+                fig=plt.figure(figsize=figsize)
+                if threeD:
+                    ax = fig.add_subplot(111, projection='3d')
+                    ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[i::2],cmap=cm.jet)
+                else:
+                    ctr=plt.contourf(mat_sol[0],mat_sol[1],ms,levels=np.linspace(0.9*min(self.sol[i::2]),1.1*max(self.sol[i::2]),50))
+                    plt.colorbar(ctr)
+                    plt.title('Solution component {:d}'.format(i))
+                if savefig is not None:
+                    plt.savefig(savefig[i])
+            if show:
+                plt.show()
+            return mat_sol
+           
+
+    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+        """Grid up some sparse, potentially concave data"""
+        coords=self.model.mesh.coords
+        if self.dofs==1:
+            data=self.sol
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI]
+
+        elif self.dofs==2:
+            data1=self.sol[::2]
+            data2=self.sol[1::2]
+            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+            XI, YI = np.meshgrid(tx, ty)
+            ZI = griddata(coords, data1, (XI, YI), method='linear')
+            ZI2 = griddata(coords, data2, (XI, YI), method='linear')
+            tree = KDTree(coords)
+            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+            dist = dist.reshape(XI.shape)
+            ZI[dist > cutoff_dist] = np.nan
+            ZI2[dist > cutoff_dist] = np.nan
+            return [tx, ty, ZI, ZI2]
 
 
 class TimeDependentModel:
@@ -1032,11 +1291,13 @@ class TimeDependentModel:
             plt.show()
         return mat_sol
 
+
     def plotAnimate(self,num,ax):
         iterate=0
         while iterate<=self.n_steps:
             iterate += 1
             yield ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[iterate],cmap=cm.jet)
+
 
     def animate(self,show=False,save=None):
         fig=plt.figure()

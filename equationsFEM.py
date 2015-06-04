@@ -103,17 +103,21 @@ class advectionDiffusion(Equation):
 class shallowShelf(Equation):
     """Shallow shelf equation, I hope"""
 
-    def __init__(self,g,rho,**kwargs):
+    def __init__(self,g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
         self.dofs=2
+        if not type(g)==float:
+            raise TypeError('Gravity must be a float')
         self.g=g
+        if not type(rho)==float:
+            raise TypeError('Density of ice must be a float')
         self.rho=rho
 
         # Some optional parameters
 
-        # I want beta to be a scalar, so only use this with constant beta
+        # I need beta to be a scalar, so only use this with constant beta
         if 'beta' in kwargs:
             self.b = kwargs['beta']
         elif 'b' in kwargs:
@@ -162,12 +166,14 @@ class shallowShelf(Equation):
             else:
                 raise AttributeError('Need surface (dzs kwarg) for SSA')
 
-        if 'nu' in kwargs:
+        if 'gradient' in kwargs:
+            nu = kwargs['gradient']
+        elif 'nu' in kwargs:
             nu = kwargs['nu']
         elif 'visc' in kwargs:
             nu = kwargs['visc']
         else:
-            raise AttributeError('Need viscosity (nu or visc kwarg) for SSA')
+            raise AttributeError('Need viscosity (gradient, nu, or visc kwarg) for SSA')
 
         # We are going to have 4 returns for the lhs, so set up a sport to receive this info
         ints=np.zeros((max_nei,4))
@@ -193,7 +199,7 @@ class shallowShelf(Equation):
             # 1,2
             ints[i,2]=elm[1].area*nu*h*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1])
             # 2,1
-            ints[i,4]=elm[1].area*nu*h*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0])
+            ints[i,3]=elm[1].area*nu*h*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0])
 
         if rhs:
             # TODO the integrals, check for more parameters?
