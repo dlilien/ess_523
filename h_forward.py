@@ -50,6 +50,7 @@ class accumulationDEM:
     def __call__(self,pt):
         return 1.0e-3*self.aspline(pt[1],pt[0])[0]
 
+
 class thickDEM:
     def __init__(self):
         bb_fn='/users/dlilien/smith/bed_data/ZBgeo.tif'
@@ -72,6 +73,7 @@ class k:
     def __call__(self,pt):
         v=self.vel(pt)
         return 7.0e3/2.0*np.outer(v,v)/min(1.0,np.linalg.norm(v))
+
 
 def main(): 
     admo=cfm.Model('fullsmithmesh.msh')

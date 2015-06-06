@@ -956,7 +956,7 @@ class NonLinearModel:
         self.dofs=dofs
 
     
-    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
+    def iterate(self,gradient,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
 
         # Make an initial guess at the velocities. Let's just use 0s by default
         if guess is not None:
@@ -968,7 +968,7 @@ class NonLinearModel:
         for i in range(nl_maxiter):
             # Loop until we have converged to within the desired tolerance
             print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
-            kwargs['gradient']=gradient(old)
+            kwargs['gradient']=gradient(self,old)
 
             mi=LinearModel(self.model,dofs=self.dofs)
             new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
@@ -978,7 +978,7 @@ class NonLinearModel:
             #Check if we converged
             if relchange<nl_tolerance and i != 0:
                 break
-            old[:]=new
+            old[:]=relaxation*new+(1.0-relaxation)*old
         else:
             raise ConvergenceError('Nonlinear solver did not converge within desired tolerance')
 
@@ -986,151 +986,7 @@ class NonLinearModel:
         return new
 
 
-
-    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
-        """Grid up some sparse, potentially concave data"""
-        coords=self.model.mesh.coords
-        if self.dofs==1:
-            data=self.sol
-            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
-            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
-            XI, YI = np.meshgrid(tx, ty)
-            ZI = griddata(coords, data, (XI, YI), method='linear')
-            tree = KDTree(coords)
-            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-            dist = dist.reshape(XI.shape)
-            ZI[dist > cutoff_dist] = np.nan
-            return [tx, ty, ZI]
-
-        elif self.dofs==2:
-            data1=self.sol[::2]
-            data2=self.sol[1::2]
-            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
-            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
-            XI, YI = np.meshgrid(tx, ty)
-            ZI = griddata(coords, data1, (XI, YI), method='linear')
-            ZI2 = griddata(coords, data2, (XI, YI), method='linear')
-            tree = KDTree(coords)
-            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-            dist = dist.reshape(XI.shape)
-            ZI[dist > cutoff_dist] = np.nan
-            ZI2[dist > cutoff_dist] = np.nan
-            return [tx, ty, ZI, ZI2]
-
-
-class LinearModel(ModelIterate):
-    """A Linear Model Iterate"""
-    # Basically the same as a model iterate, add a method to solve things
-    kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
-        if parkwargs is not None:
-            kwargs.update(parkwargs)
-        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
-        self.applyBCs(time=time)
-        if time is not None:
-            if 'BDF1' in kwargs:
-                self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
-                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
-            elif 'BDF2' in kwargs:
-                self.matrix=self.matrix-diags()
-            else:
-                raise ValueError('Cannot do that timestepping stategy')
-
-        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
-        return sol
-
-
-class NonLinearModel:
-    """A class for performing the solves on a nonlinear model, with the same method names"""
-    kind='NonLinear'
-
-    def __init__(self,model,dofs=1):
-        self.model=model
-        self.dofs=dofs
-
-    
-    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
-
-        # Make an initial guess at the velocities. Let's just use 0s by default
-        if guess is not None:
-            old=guess
-        else:
-            old=np.zeros(self.model.mesh.numnodes*self.dofs)
-
-
-        for i in range(nl_maxiter):
-            # Loop until we have converged to within the desired tolerance
-            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
-            kwargs['gradient']=gradient(old)
-
-            mi=LinearModel(self.model,dofs=self.dofs)
-            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
-            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
-
-
-
-class LinearModel(ModelIterate):
-    """A Linear Model Iterate"""
-    # Basically the same as a model iterate, add a method to solve things
-    kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
-        if parkwargs is not None:
-            kwargs.update(parkwargs)
-        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
-        self.applyBCs(time=time)
-        if time is not None:
-            if 'BDF1' in kwargs:
-                self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
-                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
-            elif 'BDF2' in kwargs:
-                self.matrix=self.matrix-diags()
-            else:
-                raise ValueError('Cannot do that timestepping stategy')
-
-        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
-        return sol
-
-
-class NonLinearModel:
-    """A class for performing the solves on a nonlinear model, with the same method names"""
-    kind='NonLinear'
-
-    def __init__(self,model,dofs=1):
-        self.model=model
-        self.dofs=dofs
-
-    
-    def iterate(self,gradient,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
-
-        # Make an initial guess at the velocities. Let's just use 0s by default
-        if guess is not None:
-            old=guess
-        else:
-            old=np.zeros(self.model.mesh.numnodes*self.dofs)
-
-
-        for i in range(nl_maxiter):
-            # Loop until we have converged to within the desired tolerance
-            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
-            kwargs['gradient']=gradient(old)
-
-            mi=LinearModel(self.model,dofs=self.dofs)
-            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
-            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
-            print('Relative Change: {:f}'.format(relchange))
-
-            #Check if we converged
-            if relchange<nl_tolerance and i != 0:
-                break
-            old[:]=new
-        else:
-            raise ConvergenceError('Nonlinear solver did not converge within desired tolerance')
-
-        self.sol=new
-        return new
-
-
-    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,vel=False,figsize=(15,10)):
         if self.dofs==1:
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -1152,8 +1008,9 @@ class NonLinearModel:
 
             # Do a quick check before we do the slow steps
             if savefig is not None:
-                if not len(savefig)==self.dofs:
-                    raise ValueError('savefig must be list of strings same length as dofs')
+                if not vel:
+                    if not len(savefig)==self.dofs:
+                        raise ValueError('savefig must be list of strings same length as dofs')
 
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -1164,17 +1021,29 @@ class NonLinearModel:
 
 
             # Do the plotting
-            for i,ms in enumerate(mat_sol[2:]):
-                fig=plt.figure(figsize=figsize)
+            if not vel:
+                for i,ms in enumerate(mat_sol[2:]):
+                    fig=plt.figure(figsize=figsize)
+                    if threeD:
+                        ax = fig.add_subplot(111, projection='3d')
+                        ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[i::2],cmap=cm.jet)
+                    else:
+                        ctr=plt.contourf(mat_sol[0],mat_sol[1],ms,levels=np.linspace(0.9*min(self.sol[i::2]),1.1*max(self.sol[i::2]),50))
+                        plt.colorbar(ctr)
+                        plt.title('Solution component {:d}'.format(i))
+                    if savefig is not None:
+                        plt.savefig(savefig[i])
+            else:
+                fig = plt.figure(figsize=figsize)
                 if threeD:
                     ax = fig.add_subplot(111, projection='3d')
-                    ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=self.sol[i::2],cmap=cm.jet)
+                    ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=np.sqrt(self.sol[0::2]**2+self.sol[1::2]**2),cmap=cm.jet)
                 else:
-                    ctr=plt.contourf(mat_sol[0],mat_sol[1],ms,levels=np.linspace(0.9*min(self.sol[i::2]),1.1*max(self.sol[i::2]),50))
+                    ctr=plt.contourf(mat_sol[0],mat_sol[1],np.sqrt(mat_sol[2]**2+mat_sol[3]**2),levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
                     plt.colorbar(ctr)
-                    plt.title('Solution component {:d}'.format(i))
                 if savefig is not None:
-                    plt.savefig(savefig[i])
+                    plt.savefig(savefig)
+
             if show:
                 plt.show()
             return mat_sol
