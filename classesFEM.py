@@ -956,7 +956,7 @@ class NonLinearModel:
         self.dofs=dofs
 
     
-    def iterate(self,gradient,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,**kwargs):
+    def iterate(self,gradient,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,abort_not_converged=False,**kwargs):
 
         # Make an initial guess at the velocities. Let's just use 0s by default
         if guess is not None:
@@ -964,25 +964,35 @@ class NonLinearModel:
         else:
             old=np.zeros(self.model.mesh.numnodes*self.dofs)
 
+        try:
+            for i in range(nl_maxiter):
+                # Loop until we have converged to within the desired tolerance
+                print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
+                kwargs['gradient']=gradient(self,old)
 
-        for i in range(nl_maxiter):
-            # Loop until we have converged to within the desired tolerance
-            print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
-            kwargs['gradient']=gradient(self,old)
+                mi=LinearModel(self.model,dofs=self.dofs)
+                new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+                if np.linalg.norm(new)>1.0e-15:
+                    relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
+                else:
+                    relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
+                print('Relative Change: {:f}'.format(relchange))
 
-            mi=LinearModel(self.model,dofs=self.dofs)
-            new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
-            relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
-            print('Relative Change: {:f}'.format(relchange))
-
-            #Check if we converged
-            if relchange<nl_tolerance and i != 0:
-                break
-            old[:]=relaxation*new+(1.0-relaxation)*old
-        else:
-            raise ConvergenceError('Nonlinear solver did not converge within desired tolerance')
-
-        self.sol=new
+                #Check if we converged
+                if relchange<nl_tolerance and i != 0:
+                    break
+                old[:]=relaxation*new+(1.0-relaxation)*old
+            else: # Executed if we never break b/c of convergence
+                if abort_not_converged:
+                    raise ConvergenceError('Nonlinear solver failed within iteration count')
+                else:
+                    print('Nonlinear solver did not converge within desired tolerance, returning')
+            self.sol=new
+        except KeyboardInterrupt:
+            try:
+                self.sol=new
+            except:
+                raise ConvergenceError('You aborted before first iterate finished')
         return new
 
 
