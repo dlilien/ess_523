@@ -1,4 +1,6 @@
+docs
 *.pyc
+*.geo
 MeshPy.py
 figs
 tex
