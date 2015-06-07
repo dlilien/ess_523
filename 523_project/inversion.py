@@ -10,6 +10,9 @@
 Let's try to do the forward problem for Ken's class!
 """
 
+import sys
+sys.path.append('..')
+sys.path.append('../lib')
 import classesFEM as cfm
 import  equationsFEM
 import numpy as np
