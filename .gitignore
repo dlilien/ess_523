@@ -1,3 +1,8 @@
+conf.py
+Makefile
+decay.mp4
+_build
+*.rst
 docs
 *.pyc
 *.geo
@@ -5,3 +10,10 @@ MeshPy.py
 figs
 tex
 .ipynb_checkpoints
+*.eps
+*.mtx
+*.npy
+*.key
+524_project/fancymesh.msh
+524_project/sparsemath.ipynb
+524_project/524_mesh_demo_ess.ipynb

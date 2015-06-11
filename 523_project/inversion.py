@@ -22,6 +22,11 @@ from glib3 import gtif2mat_fn
 
 
 class velocityDEMs:
+    """Create a spline which returns velocities a point
+
+    This function depends on having tiffs of the velocities a particular
+    absolute path. These files are large, so I don't distrubte them
+    """
     def __init__(self):
         u_fn='/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_x_vel.tif'
         v_fn='/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_y_vel.tif'
@@ -43,6 +48,11 @@ class velocityDEMs:
 
 
 class accumulationDEM:
+    """ Create a spline which returns RACMO2 accumulation at a point
+
+    You need to request this data from the Racmo folks
+    """
+
     def __init__(self):
         a_fn='/users/dlilien/Documents/GenData/SMB_RACMO2.3_monthly_ANT27_1979_2013/SMB_climate_average_amcoast.tif'
         x,y,a=gtif2mat_fn(a_fn)
@@ -55,6 +65,10 @@ class accumulationDEM:
 
 
 class thickDEM:
+    """ Calculate the thickness at a point
+
+    You need to pick the surface and DEMs to use
+    """
     def __init__(self):
         bb_fn='/users/dlilien/smith/bed_data/ZBgeo.tif'
         x,y,a=gtif2mat_fn(bb_fn)
@@ -75,10 +89,16 @@ class k:
         self.vel=vel
     def __call__(self,pt):
         v=self.vel(pt)
-        return 7.0e3/2.0*np.outer(v,v)/min(1.0,np.linalg.norm(v))
+        return 7.0e3/2.0*np.outer(v,v)/max(1.0e-3,np.sqrt(np.linalg.norm(v)))
 
 
-def main(): 
+def main():
+    """ Solve for thickness
+
+    This currently has no optimization.
+    You get plots from this, it also returns
+    the model object
+    """
     admo=cfm.Model('fullsmithmesh.msh')
     vel=velocityDEMs()
     diffu=k(vel)

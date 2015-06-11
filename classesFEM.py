@@ -69,7 +69,6 @@ class Node:
 
 
 class Element(object):
-
     """A single finite element, of given type"""
     _curr_id = 0
 
@@ -98,7 +97,13 @@ class Element(object):
         return string
 
     def pvecs(self):
-        """Return x,y vectors for plotting"""
+        """Get x,y vectors for plotting
+        
+        Returns
+        -------
+        x : array
+        y : array
+        """
         ncoords = [[], []]
         for node in self.nodes:
             ncoords[0].append(self.parent.nodes[node].x)
@@ -109,7 +114,13 @@ class Element(object):
         return ncoords[0], ncoords[1]
 
     def xyvecs(self):
-        """Return xy vectors for use with basis functions etc"""
+        """Return xy vectors for use with basis functions etc
+        
+        Returns
+        -------
+        nodes : list
+            A list of coordinate pairs for nodes; nodwise as opposed to :py:meth:`Element.pvecs`
+        """
         nodes_return = []
         for node in self.nodes:
             nodes_return.append(
@@ -413,7 +424,18 @@ class Mesh:
 
 
 class Model:
-    """A steady state model, with associated mesh, BCs, and equations"""
+    """A model, with associated mesh, BCs, and equations
+    
+    Parameters
+    ----------
+    Mesh : string or classesFEM.mesh
+       This can be a .msh or .shp file, or an already imported mesh
+    
+    Keyword Arguments
+    -----------------
+    td : bool
+       If `True` this is a time dependent model. Defaults to steady state
+    """
     def __init__(self,*mesh,**kwargs):
         if mesh:
             if type(mesh[0])==str:
@@ -456,6 +478,19 @@ class Model:
 
 
     def add_equation(self,eqn):
+        """Add the equation to be solved
+
+        Parameters
+        ----------
+        eqn : `equationsFEM.Equation`
+           Equation to solve
+
+        Raises
+        ------
+        TypeError
+           If the equation is not of the proper type
+        """
+
         try:
             if not Equation in type(eqn).__bases__:
                 raise TypeError('Need equation of type equationsFEM.Equation')
@@ -495,6 +530,13 @@ class Model:
 
 
     def makeIterate(self):
+        """Prepare to solve.
+
+        Returns
+        -------
+        model : LinearModel or NonLinearModel
+           Determined by whether or not the model is linear
+        """
         if self.linear:
             return LinearModel(self,dofs=self.eqn.dofs)
         else:
@@ -502,7 +544,22 @@ class Model:
 
 
 class ModelIterate:
-    """This object makes matrix, forms a solution, etc"""
+    """This object makes matrix, forms a solution, etc
+
+       Parameters
+       ----------
+       model : classesFEM.Model
+           The model, with equations and boundary conditions
+       eqn : equationsFEM.Equation,optional
+           The equation to solve, if it differs from that tied to the model
+           e.g. in a time dependent model
+
+       Keyword Arguments
+       -----------------
+       dofs : int,optional
+           Number of degrees of freedom. Default to that associated with the equation
+       """
+
 
 
     def __init__(self,model,*eqn,**kwargs):
@@ -522,8 +579,11 @@ class ModelIterate:
             raise TypeError('Degrees of freedom must be an integer')
 
 
-    def MakeMatrixEQ(self,max_nei=12,parkwargs={}):
+    def MakeMatrixEQ(self,max_nei=12,parkwargs={},**kwargs):
         """Make the matrix form, max_nei is the most neighbors/element"""
+
+        if kwargs is not None:
+            parkwargs.update(kwargs)
         if self.dofs==1:
             # The easy version, scalar variable to solve for
 
@@ -805,7 +865,25 @@ class ModelIterate:
 
 
     def solveIt(self,method='BiCGStab',precond='LU',tolerance=1.0e-5):
-        """Do some linear algebra"""
+        """Solve the matrix equation
+
+        Parameters
+        ----------
+        method : string,optional
+           Must be one of CG, BiCGStab, GMRES, and direct. Default is BiCGStab
+        precond : string or LinearOperator,optional
+           Can be LU, or you can feed the matrix preconditioner object, or it can 
+           be None. Defaults to LU.
+        tolerance : float
+           Convergence tolerance of the iterative method. Defaults to 1.0e-5
+           
+        Returns
+        -------
+        self.sol : array
+            The matrix solution
+        """
+
+
         if not method=='direct':
             if precond=='LU':
                 p=spilu(self.matrix, drop_tol=1.0e-5)
@@ -970,8 +1048,8 @@ class NonLinearModel:
                 print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
                 kwargs['gradient']=gradient(self,old)
 
-                mi=LinearModel(self.model,dofs=self.dofs)
-                new=mi.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+                self.linMod=LinearModel(self.model,dofs=self.dofs)
+                new=self.linMod.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
                 if np.linalg.norm(new)>1.0e-15:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                 else:
@@ -1222,7 +1300,15 @@ class TimeDependentModel:
 
 
 class ConvergenceError(Exception):
-    """Error for bad iterative method result"""
+    """Error for bad iterative method result
+    
+    Parameters
+    ----------
+    method : string,optional
+        The iterative method which caused the error
+    iters : int,optional
+        The iteration number at failure
+    """
 
 
     def __init__(self,method=None,iters=None):
@@ -1236,35 +1322,86 @@ class ConvergenceError(Exception):
 
 def main():
     import equationsFEM
-    mo=Model('testmesh.msh')
+    mo=Model('524_project/testmesh.msh')
     mo.add_equation(equationsFEM.diffusion())
     mo.add_BC('dirichlet',1,lambda x: 10.0)
     mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
     mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
     mo.add_BC('neumann',4,lambda x:0.0)
     m=LinearModel(mo)
-    m.iterate()
+    #m.iterate()
 
 
-    admo=Model('testmesh.msh')
+    admo=Model('524_project/testmesh.msh')
     admo.add_equation(equationsFEM.advectionDiffusion())
     admo.add_BC('dirichlet',1,lambda x: 15.0)
     admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
     admo.add_BC( 'dirichlet',3,lambda x: 5.0)
     admo.add_BC('neumann',4,lambda x:0.0)
     am=LinearModel(admo)
-    am.iterate(v=lambda x:np.array([10.0,0.0]))
+    am.iterate(v=lambda x:np.array([1.0,0.0]))
 
-    mod=Model('testmesh.msh',td=True)
+    mod=Model('524_project/testmesh.msh',td=True)
     mod.add_equation(equationsFEM.diffusion())
     mod.add_BC('dirichlet',1,lambda x,t: 26.0)
     mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
     mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
     mod.add_BC('neumann',4,lambda x,t:0.0)
-    mi=TimeDependentModel(mod,10.0,60,lambda x:1+(x[0]-5)**2)
-    mi.animate(show=False,save='decay.mp4')
-    return m,am,mi
+    #mi=TimeDependentModel(mod,10.0,2,lambda x:1+(x[0]-5)**2)
+    #mi.animate(show=False,save='decay.mp4')
+    return am #m,am,mi
+
+    
+    
 
 
 if __name__ == '__main__':
-    main()
+    #main()
+    import cProfile
+
+    def do_cprofile(func):
+        def profiled_func(*args, **kwargs):
+            profile = cProfile.Profile()
+            try:
+                profile.enable()
+                result = func(*args, **kwargs)
+                profile.disable()
+                return result
+            finally:
+                profile.print_stats()
+        return profiled_func
+
+    @do_cprofile
+    def upwinding():
+        import equationsFEM
+        """test upwinding"""
+        class k:
+            def __init__(self,vel,k_old,alpha):
+                self.vel=vel
+                self.k=k_old
+                self.alpha=alpha
+            def __call__(self,pt):
+                v=self.vel(pt)
+                return self.k(pt)+self.alpha*0.5/2.0*np.outer(v,v)/max(1.0e-8,np.linalg.norm(v))
+
+        alpha=3.0
+        k_old=lambda x:np.array([[1.0, 0.0],[0.0, 1.0]])
+        vel=lambda x: np.array([1000.0,0.0])
+        k_up=k(vel,k_old,alpha)
+
+        admo=Model('524_project/testmesh.msh')
+        admo.add_equation(equationsFEM.advectionDiffusion())
+        admo.add_BC('dirichlet',1,lambda x: 15.0)
+        admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
+        admo.add_BC( 'dirichlet',3,lambda x: 5.0)
+        admo.add_BC('neumann',4,lambda x:0.0)
+        am=LinearModel(admo)
+        am.iterate(v=vel,k=k_up)
+        #am.plotSolution(savefig='figs/upwinded.eps',show=True)
+        am.plotSolution()
+        plt.title('v=1000, upwinded')
+        plt.savefig('figs/upwinded1000.eps')
+
+
+
+    upwinding()
