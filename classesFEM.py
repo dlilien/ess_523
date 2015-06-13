@@ -6,8 +6,45 @@
 #
 # Distributed under terms of the MIT license.
 
-"""
-Define a mesh classes that have info I might want about finite element meshes
+"""Define a number of different classes which collectively constitute a finite element solver
+
+All these definitions are contained in the file classesFEM.py
+
+Begin by importing a mesh from GMSH to create an instance of the :py:class:`Mesh` class.
+This is best done by creating a :py:class:`Model` instance with the GMSH file as the argument; this will give you a model with associated mesh that you can then specify equation and boundary conditions for.
+Next, the equation you want to solve (derived from :py:class:`Equation`) should be associated with the model using the :py:meth:`Model.add_equation` method.
+The boundary conditions should then be attached using :py:meth:`Model.add_BC`.
+At this point you can either create the object to solve the equation in steady state using the :py:meth:`Model.makeIterate` method, or you can create a :py:class:`TimeDependentModel` instance around this model. In either case, you should call the :py:meth:`iterate` method of the resultant object.
+
+Examples
+--------
+Basic solution to a simple case with mesh in testmesh.msh
+
+>>> mo=Model('524_project/testmesh.msh')
+>>> mo.add_equation(equationsFEM.diffusion())
+>>> mo.add_BC('dirichlet',1,lambda x: 10.0)
+>>> mo.add_BC('neumann',2,lambda x:-1.0)
+>>> mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
+>>> mo.add_BC('neumann',4,lambda x:0.0)
+>>> m=LinearModel(mo)
+>>> m.iterate()
+
+Nonlinear models are similarly straightforward.
+The boundary conditions must accept time as an argument and get an initial condition, for example
+
+>>> mod=Model('524_project/testmesh.msh',td=True)
+>>> mod.add_equation(equationsFEM.diffusion())
+>>> mod.add_BC('dirichlet',1,lambda x,t: 26.0)
+>>> mod.add_BC('neumann',2,lambda x,t:0.0)
+>>> mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
+>>> mod.add_BC('neumann',4,lambda x,t:0.0)
+>>> initial_condition=lambda x:1+(x[0]-5)**2
+>>> mi=TimeDependentModel(mod,10.0,2,initial_condition) # This does the solving too
+>>> mi.animate(show=True) # Visualize the results
+
+
+
+
 """
 
 import numpy as np
@@ -28,8 +65,6 @@ Axes3D # Avoid the warning
 
 
 class Node:
-
-    """A node with x,y,z coordinates"""
     _curr_id = 0
 
     def __init__(self, x, y, z=0.0, ident=None, parent=None):
@@ -69,7 +104,31 @@ class Node:
 
 
 class Element(object):
-    """A single finite element, of given type"""
+    """A single finite element of given type
+    
+    Attributes
+    ----------
+    kind : str
+        The type of element (triangular or linear currently)
+    eltypes : int
+        The gmsh numeric descriptor of this type of element
+    id : int
+        The number of the element
+    parent : :py:class:`Mesh`
+        The mesh to which the element is associated
+    nodes : list of ints
+        The mesh nodes belonging to this element
+    cent : 2-tuple of floats
+        The center of this element
+    gpoints : list of 3-tuples (weight,x,y)
+        The gauss points with weights of the parent element
+    bases : functions
+        The basis functions of the element, ordered so the i-th is 1 on the i-th node
+    dbases : list of 2-tuples (dx,dy)
+        The derivatives of the basis functions
+    F : function
+        The mapping from the parent element to this element
+    """
     _curr_id = 0
 
     @staticmethod
@@ -133,8 +192,10 @@ class Element(object):
 
 
 class TriangElement(Element):
-
-    """A single triangular finite element"""
+    """A single triangular finite element
+    
+    A subclass of :py:class:`Element` with the same properties
+    """
     kind = 'Triangular'
     eltypes = 2
     gpoints=[[-27.0/96.0, 1.0/3.0, 1.0/3.0], [25.0/96.0, 0.2, 0.6], [25.0/96.0, 0.6, 0.2], [25.0/96.0, 0.2, 0.2]] #gauss points with weights for parent element
@@ -216,7 +277,10 @@ class TriangElement(Element):
 
 class LineElement(Element):
 
-    """A single line finite element"""
+    """A single line finite element
+    
+    A subclass of :py:class:`Element` with the same attributes.
+    """
     kind = 'Line'
     eltypes = 1
     gpoints = [ [0.5, (1.0-1.0/np.sqrt(3.0))/2.0, 0], [0.5, (1.0+1.0/np.sqrt(3.0))/2.0, 0]]
@@ -435,6 +499,19 @@ class Model:
     -----------------
     td : bool
        If `True` this is a time dependent model. Defaults to steady state
+
+    Attributes
+    ----------
+    time_dep : bool
+        True if time dependent, false if steady-state
+    mesh : :py:class:`Mesh`
+        Points to the associated mesh
+    dofs : int
+        The number of degrees of freedom in the equation to solve. e.g. 2 for 2D velocity
+    eqn : :py:class:`equationsFEM.Equation`
+        The equation to solve, should be attached using :py:meth:`add_equation`
+    BCs : dictionary
+        The associated boundary conditions, should be attached using :py:meth:`add_BC` 
     """
     def __init__(self,*mesh,**kwargs):
         if mesh:
@@ -453,7 +530,7 @@ class Model:
             else:
                 raise TypeError('Mesh input not understood')
             self.mesh.CreateBases()
-
+        self.eqn=None
         self.BCs={}
 
         # Do a bunch of rigamarole to allow a couple kwargs for linearity
@@ -506,7 +583,18 @@ class Model:
 
 
     def add_BC(self,cond_type,target_edge,function=lambda x:0.0):
-        """Assign a boundary condition, has some checking"""
+        """Assign a boundary condition (has some tests)
+        
+        Parameters
+        ----------
+        cond_type : string
+            Type of boundary condition, must be dirchlet or neumann
+        target_edge : int
+            The number of the boundary to which this is being assigned
+        function : function
+            What the value is on this boundary, defaults to zero in steady state,
+            must be specified if time dependent
+        """
         # You can also just manually edit the self.BCs dictionary
         if not cond_type in ['neumann','dirichlet']:
             raise TypeError('Not a recognized boundary condition type')
@@ -550,7 +638,7 @@ class ModelIterate:
        ----------
        model : classesFEM.Model
            The model, with equations and boundary conditions
-       eqn : equationsFEM.Equation,optional
+       eqn : :py:class:`equationsFEM.Equation`,optional
            The equation to solve, if it differs from that tied to the model
            e.g. in a time dependent model
 
@@ -580,7 +668,20 @@ class ModelIterate:
 
 
     def MakeMatrixEQ(self,max_nei=12,parkwargs={},**kwargs):
-        """Make the matrix form, max_nei is the most neighbors/element"""
+        """Make the matrix form, max_nei is the most neighbors/element
+        
+        Parameters
+        ----------
+        max_nei : int,optional
+           The maximum number of nodes/equations per element. Overestimate this. Defaults to 12.
+        parkwargs : dictionary,optional
+           Lazy parameter for passing arguments from other methods. Combines with kwargs.
+        
+        Keyword Arguments
+        -----------------
+        All keyword arguments are simply passed along to the equation you are trying to solve.
+        This should include things like source terms, conductivities, or other arguments needed by the equation.
+        """
 
         if kwargs is not None:
             parkwargs.update(kwargs)
@@ -691,7 +792,16 @@ class ModelIterate:
             raise ValueError('Cannnot do more than 2 dofs')
 
         
-    def applyBCs(self,time=None):
+    def applyBCs(self,time=None,normal=True):
+        """ Put the boundary conditions into the matrix equations
+
+        Parameters
+        ----------
+        time : float,optional
+           The time if the model is time-dependent, None otherwise. Defaults to None.
+        normal : bool,optional
+           Specifies if the flux is normal for a Neumann condition. Defaults to True.
+        """
         BCs=self.parent.BCs
         Mesh=self.mesh
         dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
@@ -735,24 +845,24 @@ class ModelIterate:
         for edge in neumann:
             try:
                 if time is not None:
-                    self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True,time=time)
+                    self._applyNeumann(edge_nodes[edge],b_funcs[edge],normal=normal,time=time)
                 else:
-                    self.applyNeumann(edge_nodes[edge],b_funcs[edge],normal=True)
+                    self._applyNeumann(edge_nodes[edge],b_funcs[edge],normal=normal)
             except KeyError: # If we have no condition we are just taking 0 neumann
                 pass
 
         for edge in dirichlet:
             try:
                 if time is not None:
-                    self.applyDirichlet(edge_nodes[edge],b_funcs[edge],time=time)
+                    self._applyDirichlet(edge_nodes[edge],b_funcs[edge],time=time)
                 else:
-                    self.applyDirichlet(edge_nodes[edge],b_funcs[edge])
+                    self._applyDirichlet(edge_nodes[edge],b_funcs[edge])
             except KeyError:
-                self.applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
+                self._applyDirichlet(edge_nodes[edge],lambda x:0) # We actually need to do something to implement a zero
                 # maybe throw the error though?
 
 
-    def applyNeumann(self,edge_nodes,function,normal=True,flux=True,time=None): #TODO make non-normal stuff, non-flux  possible
+    def _applyNeumann(self,edge_nodes,function,normal=True,flux=True,time=None): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
         if self.dofs==1:
             for node in edge_nodes:
@@ -802,7 +912,7 @@ class ModelIterate:
             raise ValueError('Cannot do more than 2 dofs')
 
 
-    def applyDirichlet(self,edge_nodes,function,time=None):
+    def _applyDirichlet(self,edge_nodes,function,time=None):
         """Let's apply an essential boundary condition"""
         if self.dofs==1:
             for node in edge_nodes:
@@ -926,6 +1036,34 @@ class ModelIterate:
 
 
     def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+        """ Plot the solution to the differential equation
+
+        Parameters
+        ----------
+        threeD : bool,optional
+           If True, plot as 3D tri_surf, otherwise grid and plot 2D. Defaults to True.
+        savefig : string,optional
+           If a string is supplied, save figure with that filename. Defaults to None.
+        show : bool,optional
+           If True display the result in a window. Defaults to False.
+        x_steps : int,optional
+           The number of pixels in x, defaults to 500
+        y_steps : int,optional
+           The number of pixels in y, defaults to 500
+        cutoff_dist : float,optional
+           If the mesh is concave, supply this number to exclude pixels greater than this distance from node.
+        savesol : bool,optional
+           If True, store the gridded solution in memory as self.sol. Defaults to False.
+        figsize : tuple,optional
+           The dimensions of the figure. Defaults to (15,10)
+
+        Returns
+        -------
+        mat_sol : list of arrays
+            The gridded solution, returned as x,y,solution
+        """
+
+
         if self.dofs==1:
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -973,7 +1111,17 @@ class ModelIterate:
            
 
     def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
-        """Grid up some sparse, potentially concave data"""
+        """Grid up the solution, with potentially concave data
+        
+        Parameters
+        ----------
+        x_steps : int,optional
+           The number of pixels in x, defaults to 500
+        y_steps : int,optional
+           The number of pixels in y, defaults to 500
+        cutoff_dist : float,optional
+           If the mesh is concave, supply this number to exclude pixels greater than this distance from node.
+        """
         coords=self.mesh.coords
         if self.dofs==1:
             data=self.sol
@@ -1026,7 +1174,18 @@ class LinearModel(ModelIterate):
 
 
 class NonLinearModel:
-    """A class for performing the solves on a nonlinear model, with the same method names"""
+    """A class for performing the solves on a nonlinear model, with the same method names
+
+    Parameters
+    ----------
+    model : :py:class:`Model`
+       The model with mesh, BCs, equation, etc.
+    dofs : int,optional
+       The number of degrees of freedom of the variable for which we are solving.
+
+    """
+    
+
     kind='NonLinear'
 
     def __init__(self,model,dofs=1):
@@ -1035,6 +1194,42 @@ class NonLinearModel:
 
     
     def iterate(self,gradient,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,abort_not_converged=False,**kwargs):
+        """
+        The method for performing the solution to the nonlinear model iterate
+
+        Parameters
+        ----------
+        gradient : function
+           This gets called at every iteration in order to update parameters used in the equation being solved
+        relaxation : float,optional
+           The amount to relax. Use less than 1 if you have convergence problems. Defaults to 1.0.
+        nl_tolerance : float,optional
+           When to declare things converged
+        guess : array,optional
+           An initial guess at the solution. If None, use all zeros. Defaults to None.
+        nl_maxiter : int,optional
+           Maximum number of nonlinear iterations. Defaults to 50.
+        method : string,optional
+           Solution method to use for the linear system. Defaults to BiCGStab. Done using :py:meth:`ModelIterate.solveIt`.
+        precond : string,optional
+           Preconditioning method for the linear system if solved iteratively. Defaults to ILU. Can also be a LinearOperator which does the solving using a preconditioning matrix or matrices.
+        tolerance : float,optional
+           Linear system convergence tolerance for iterative methods. Defaults to 1.0e-5
+        max_nei : int,optional
+           Maximum number of neighboring elements times dofs. Err large. Defaults to 16.
+        time : float,optional
+           The time in a time dependent model. None for steady state. Defaults to None.
+        abort_not_converged : bool,optional
+           If true, raise a :py:exc:`ConvergenceError` if non-linear iterations do not converge. Otherwise call it good enough. Defaults to False.
+        
+        Any Any keyword arguments are passed down to the equation we are solving, for example time dependent terms like sources or conductivity can be specified.
+
+        Returns
+        -------
+        solution : array
+           The solution to the nonlinear Equation.
+
+        """
 
         # Make an initial guess at the velocities. Let's just use 0s by default
         if guess is not None:
@@ -1075,6 +1270,10 @@ class NonLinearModel:
 
 
     def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,vel=False,figsize=(15,10)):
+        """ Plot the resulting nonlinear solution.
+
+        See :py:meth:`ModelIterate.plotSolution` for explanation of parameters.
+        """
         if self.dofs==1:
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -1138,7 +1337,22 @@ class NonLinearModel:
            
 
     def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
-        """Grid up some sparse, potentially concave data"""
+        """Grid up the solution, with potentially concave data
+        
+        Parameters
+        ----------
+        x_steps : int,optional
+           The number of pixels in x, defaults to 500
+        y_steps : int,optional
+           The number of pixels in y, defaults to 500
+        cutoff_dist : float,optional
+           If the mesh is concave, supply this number to exclude pixels greater than this distance from node.
+
+        Returns
+        -------
+           Matrix Solution : list
+              Matrix solution of the form x,y,solution_1,*solution_2 where solution_2 is only returned if the variable we are solving for is 2d.
+        """
         coords=self.model.mesh.coords
         if self.dofs==1:
             data=self.sol
@@ -1196,14 +1410,22 @@ class TimeDependentModel:
         self.lin_tolerance=lin_tolerance
         self.ic=initial_condition
         self.method=method
-        self.sol=self.solveIt()
+        self.sol=self.iterate()
 
 
     def __str__(self):
         return 'Time dependent model with '+str(self.n_steps)+' time steps'
 
 
-    def solveIt(self):
+    def iterate(self):
+        """
+        Solve the equation. I don't allow any choices as of now.
+
+        Returns
+        -------
+        solution : list
+           A list of arrays of the node-wise solution at each timestep. The first entry is the initial condition.
+        """
         sol=[np.array([self.ic(pt) for pt in self.model.mesh.coords])]
         if self.model.eqn.lin:
             iterate=LinearModel
@@ -1232,6 +1454,14 @@ class TimeDependentModel:
 
 
     def plotSolution(self,iterate=-1,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+        """ Plot the solution at a some point during the run
+
+        For parameter options see :py:meth:`ModelIterate.plotSolution`. In addition, supports
+        Parameters
+        ----------
+        iterate : int,optional
+           The timestep we want to plot. Defaults to -1 (the final one).
+        """
         mat_sol=self.sparse2mat(iterate, x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
         if savesol:
             self.matsol=mat_sol
@@ -1249,7 +1479,7 @@ class TimeDependentModel:
         return mat_sol
 
 
-    def plotAnimate(self,num,ax):
+    def _plotAnimate(self,num,ax):
         iterate=0
         while iterate<=self.n_steps:
             iterate += 1
@@ -1257,6 +1487,15 @@ class TimeDependentModel:
 
 
     def animate(self,show=False,save=None):
+        """ Animate the solution
+
+        Parameters
+        ----------
+        show : bool,optional
+           If True, display the plot
+        save : string,optional
+           In not None, save animation as the given name. Uses ffmpeg writer. Only mp4 extension is tested.
+        """
         fig=plt.figure()
         ax=p3.Axes3D(fig)
         ax.set_xlim3d([min(self.model.mesh.coords[:,0]),max(self.model.mesh.coords[:,0])])
@@ -1285,7 +1524,14 @@ class TimeDependentModel:
 
 
     def sparse2mat(self, iterate, x_steps=500, y_steps=500, cutoff_dist=2000.0):
-        """Grid up some sparse, potentially concave data"""
+        """Grid up the solution
+
+        Same as :py:meth:`ModelIterate.sparse2mat` except takes a parameter to specify the timestep.
+        Parameters
+        ----------
+        iterate : int
+           The timestep to grid up
+        """
         coords=self.model.mesh.coords
         data=self.sol[iterate]
         tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
