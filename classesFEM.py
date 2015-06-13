@@ -667,15 +667,13 @@ class ModelIterate:
             raise TypeError('Degrees of freedom must be an integer')
 
 
-    def MakeMatrixEQ(self,max_nei=12,parkwargs={},**kwargs):
+    def MakeMatrixEQ(self,max_nei=12,**kwargs):
         """Make the matrix form, max_nei is the most neighbors/element
         
         Parameters
         ----------
         max_nei : int,optional
            The maximum number of nodes/equations per element. Overestimate this. Defaults to 12.
-        parkwargs : dictionary,optional
-           Lazy parameter for passing arguments from other methods. Combines with kwargs.
         
         Keyword Arguments
         -----------------
@@ -683,8 +681,6 @@ class ModelIterate:
         This should include things like source terms, conductivities, or other arguments needed by the equation.
         """
 
-        if kwargs is not None:
-            parkwargs.update(kwargs)
         if self.dofs==1:
             # The easy version, scalar variable to solve for
 
@@ -704,14 +700,14 @@ class ModelIterate:
                 # Do the diagonal element
                 rows[nnz]=i-1 
                 cols[nnz]=i-1
-                data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
+                data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,**kwargs)
                 nnz += 1
 
                 for j,node2_els in node1.neighbors.items():
                     # Do the off diagonals, do not assume symmetry
                     rows[nnz]=i-1
                     cols[nnz]=j-1
-                    data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
+                    data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,**kwargs)
                     nnz += 1
 
             # store what we have done
@@ -753,7 +749,7 @@ class ModelIterate:
                 cols[nnz+3]=2*(i-1)
 
                 # Lazy, no checking for correct return from equation but so it goes
-                data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,kwargs=parkwargs)
+                data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,**kwargs)
                 
                 # increment things
                 nnz += 4
@@ -778,7 +774,7 @@ class ModelIterate:
                     cols[nnz+3]=2*(j-1)
 
                     # Again, we hope the return from this equation is good, dumb things are happening with i,j in the supplement, so these don't match
-                    data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,kwargs=parkwargs)
+                    data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,**kwargs)
 
                     # increment again
                     nnz += 4
@@ -1155,10 +1151,8 @@ class LinearModel(ModelIterate):
     """A Linear Model Iterate"""
     # Basically the same as a model iterate, add a method to solve things
     kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,parkwargs=None,**kwargs):
-        if parkwargs is not None:
-            kwargs.update(parkwargs)
-        self.MakeMatrixEQ(max_nei=max_nei,parkwargs=kwargs)
+    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,**kwargs):
+        self.MakeMatrixEQ(max_nei=max_nei,**kwargs)
         self.applyBCs(time=time)
         if time is not None:
             if 'BDF1' in kwargs:
@@ -1244,7 +1238,7 @@ class NonLinearModel:
                 kwargs['gradient']=gradient(self,old)
 
                 self.linMod=LinearModel(self.model,dofs=self.dofs)
-                new=self.linMod.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,parkwargs=kwargs)
+                new=self.linMod.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,**kwargs)
                 if np.linalg.norm(new)>1.0e-15:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                 else:
