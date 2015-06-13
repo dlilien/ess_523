@@ -7,13 +7,43 @@
 # Distributed under terms of the MIT license.
 
 """
-These are a bunch (hopefully) of equations that the FEM code can solve
+These are a bunch (hopefully) of equations that the FEM code can solve, and the base class for these equations
 """
 
 import numpy as np
 
 class Equation:
-    """Class for equations. Really just make  a function API, eqns only need __call__"""
+    """Class for equations. Really just make a callable function API.
+
+    Besides the attributes which follow, every equation must be callable. The :py:meth:`__call__` method must take four positional arguments (which are probably needed for any finite element solution) and should probably also accept one keyword arguments which are generally needed. Additional arguments can be passed as kwargs. The parent mesh can be accessed via :py:attr:`Element.parent`. The required/suggested arguments, and required returns are:
+
+    Parameters
+    ----------
+    node1 : int
+       The number of the node corresponding to the basis function
+    node2 : int
+       The number of the node corresponding to the weight/test function
+    elements : list
+       A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
+    rhs : bool
+       If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
+    max_nei : int,optional 
+       The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
+
+    Returns
+    -------
+    integrals : float if 1D, 4-tuple if 2D
+       In 1D return the coefficient for the node1, node2 coefficient of the FEM matrix. In 2D, return the ((z1,z1),(z2,z2),(z1,z2),(z2,z1)) coefficients for node1,node2.
+    rhs : float if 1D, 2-tuple if 2D
+       Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
+    
+    Attributes
+    ----------
+    lin : bool
+       True if the equation is linear and false otherwise. Should be overridden by subclass.
+    dofs : int
+       The number of degrees of freedom of the variable for which we are solving. Is 1 unless overridden.
+    """
     # equations must override lin to be boolean and have a call method
     def __init__(self):
         self.lin=None
@@ -59,11 +89,21 @@ class diffusion(Equation):
 
 
 class advectionDiffusion(Equation):
+    """ Defines the advection-diffusion equation"""
     def __init__(self):
         self.lin=True
         self.dofs=1
-    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
-        """Let's solve the diffusion equation"""
+    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,**kwargs):
+        """Solve the advection-diffusion equation
+        
+        Keyword Arguments
+        -----------------
+        k : array or float
+            The value of the diffusion coefficient. It can be an array if you want anisotropy (it will be dotted/multiplied with the gradient of the temperature variable). If scalar, it is just multiplied. Defaults to 1.0.
+        v : function
+            Required. The velocity field as a function of space. Should accept a length 2 array (x,y) as an argument and return a length 2 array (vx,vy).
+
+        """
         if 'k' in kwargs:
             if type(kwargs['k'](elements[0][1].F(elements[0][1].gpoints[0][1:])))==float:
                 k=lambda x: kwargs['k']*np.array([1.0, 1.0])
@@ -101,7 +141,22 @@ class advectionDiffusion(Equation):
 
 
 class shallowShelf(Equation):
-    """Shallow shelf equation, I hope"""
+    """Shallow shelf equation over a map-view domain. Buggy.
+    
+    Parameters
+    ----------
+    g : float,optional
+       The value of gravity. Allows for unit flexibility. Defaults to 9.8.
+    rho : float,optional
+       The density of ice. Defaults to 917
+
+    Keyword Arguments
+    -----------------
+    beta : float
+       The value of the friction coefficient. Only set it here if you want it constant over the whole domain, otherwise deal with it at iteration time
+    thickness : function
+       A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
+    """
 
     def __init__(self,g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
@@ -129,8 +184,32 @@ class shallowShelf(Equation):
             self.thickness = kwargs['h']
 
 
-    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,kwargs={}):
-        """Be careful on what the return is for 2d"""
+    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
+        """Attempt to solve the shallow-shelf approximation.
+
+
+        The elements passed to this method must each have a property :py:attr:`dzs` which is a 2-vector which is the surface slope on that element. They also must have a function for viscosity, :py:attr:`nu` associated with them which is a scalar. Since both of these are not spatially variable within an element using piecewise linear basis functions, they should just be values not functions.
+
+        Parameters
+        ----------
+        node1 : int
+           The number of the node corresponding to the basis function
+        node2 : int
+           The number of the node corresponding to the weight/test function
+        elements : list
+           A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+        rhs : bool
+           If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
+        max_nei : int,optional 
+           The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
+
+        Keyword Arguments
+        -----------------
+        h : function
+           Required if thickness is not set. The ice thickness as a function of space. Should accept a 2-vector of x,y coordinates and return a float.
+        b : float
+           Required if not set when the equation instance is created. Square root of basal friction coefficient.
+        """
         # We need basal friction in kwargs, call this b or beta
         # need the thickness, called h or thickness
         # need gravity (not hard coded for unit flexibility) called g
