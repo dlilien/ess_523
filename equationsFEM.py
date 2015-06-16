@@ -152,13 +152,13 @@ class shallowShelf(Equation):
 
     Keyword Arguments
     -----------------
-    beta : float
-       The value of the friction coefficient. Only set it here if you want it constant over the whole domain, otherwise deal with it at iteration time
+    b : float
+       The value of the friction coefficient. Can be a float or a function. I use elemental average values. 
     thickness : function
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
-    def __init__(self,g=9.8,rho=917.0,**kwargs):
+    def __init__(self,g=9.8,rho=917.0,b=lambda x: 0.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
@@ -170,13 +170,8 @@ class shallowShelf(Equation):
             raise TypeError('Density of ice must be a float')
         self.rho=rho
 
-        # Some optional parameters
-
-        # I need beta to be a scalar, so only use this with constant beta
-        if 'beta' in kwargs:
-            self.b = kwargs['beta']
-        elif 'b' in kwargs:
-            self.b = kwargs['b']
+        # Some optional parameters:
+        self.b = b
      
         if 'thickness' in kwargs:
             self.thickness = kwargs['thickness']
@@ -217,17 +212,9 @@ class shallowShelf(Equation):
         # need viscosity, call it nu or visc
 
         # Check for required inputs
-        if hasattr(self,'b'):
-            b=self.b
-        else:
-            # We would like b to be assigned element-wise and then to force it piecewise-constant
-            # Deal with complexity on the model end for now?
-            if 'b' in kwargs:
-                b = kwargs['b']
-            else:
-                raise RuntimeError('SSA needs basal friction input (b or beta kwarg)')
-
-
+        if not np.all([hasattr(elm[1],'b') for elm in elements]):
+            for elm in elements:
+                elm[1].b=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
         if 'h' in kwargs:
             for elm in elements:
@@ -235,6 +222,7 @@ class shallowShelf(Equation):
         if not hasattr(elements[0][1],'h'):
             if hasattr(elements[0][1],'thickness'):
                 for elm in elements:
+                    print(elm[0])
                     elm[1].h=lambda x: elm[1].thickness
             else:
                 raise AttributeError('No thickness found')
@@ -261,16 +249,17 @@ class shallowShelf(Equation):
 
             n2b=elm[1].nodes.index(node2)
             # this is the index of the basis function (i direction in the supplement)
+            
             gps=[(gp[0],elm[1].F(gp[1])) for gp in elm[1].gpts]
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
-            ints[i,0]=elm[1].area*(-b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            ints[i,0]=2*elm[1].area*(elm[1].b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
             # 2,2
-            ints[i,1]=elm[1].area*(-b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+            ints[i,1]=2*elm[1].area*(elm[1].b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i,2]=elm[1].area*elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1])
+            ints[i,2]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i,3]=elm[1].area*elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0])
+            ints[i,3]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
 
         if rhs:
             # TODO the integrals, check for more parameters?

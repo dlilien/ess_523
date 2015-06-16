@@ -40,6 +40,19 @@ class velocityDEMs:
         
 
     def __call__(self,pt):
+        """Calculate velocity
+
+        Parameters
+        ----------
+        pt : array
+           The x,y coordinate of the location at which to calculate the value
+
+        Returns
+        -------
+        velocity : array
+           The vector velocity
+        """
+
         return np.array([self.uspline(pt[1],pt[0])[0],self.vspline(pt[1],pt[0])[0]])
 
 
@@ -69,6 +82,26 @@ class surfDEM:
 
     def __call__(self,pt):
         return self.bspline(pt[1],pt[0])[0]
+
+
+class betaDEM:
+    """Make a function to return the inverted friction parameter from elmer
+    
+    Parameters
+    ----------
+    beta_n : string,optional
+       The file containing the geotiff of beta values
+       """
+    def __init__(self,
+            beta_fn='/Users/dlilien/smith/elmer/auto/1990s_adjoint_ffnewbenbl_05tau/stress1/beta.tif'):
+
+        x,y,beta=gtif2mat_fn(beta_fn)
+        beta[np.isnan(beta)]=0
+        self.spline=RectBivariateSpline(np.flipud(y),x,np.flipud(beta))
+
+
+    def __call__(self,pt):
+        return self.spline(pt[1],pt[0])[0]
 
 
 def dzs(mesh,surface):
@@ -121,10 +154,10 @@ def nu(nlmodel,velocity,B_0=None,temp=lambda x: -10.0,n=3.0,max_val=1.0e32):
         dv=np.sum([velocity[2*number-1]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
         if not hasattr(element,'b'):
             if B_0 is None:
-                element.b=getArrheniusFactor(np.sum([gpt[0]*temp(element.F(gpt[1:])) for gpt in element.gpoints]))
+                element._b=getArrheniusFactor(np.sum([gpt[0]*temp(element.F(gpt[1:])) for gpt in element.gpoints]))
             else:
-                element.b=B_0
-        element.nu=visc(du,dv,element.b,n=n,max_val=max_val)
+                element._b=B_0
+        element.nu=visc(du,dv,element._b,n=n,max_val=max_val)
 
 
 def getArrheniusFactor(temp):
@@ -149,6 +182,15 @@ def getArrheniusFactor(temp):
         return 1.916e3*np.exp(-139.0e3/(8.314*(273.15)))
 
 
+def testnu(nlmodel,*args,**kwargs):
+    elements=nlmodel.model.mesh.elements
+
+    # We are going to calculate the viscosity element-wise since this is how we have
+    # the velocity gradients. The gradients are piecewise constant, so we don't need
+    # to do anything fancy with Gauss Points.
+
+    for element in elements.values():
+        element.nu=1.0e12
 
 
 def visc(du,dv,B,n=3.0,max_val=1.0e32):
@@ -158,7 +200,7 @@ def visc(du,dv,B,n=3.0,max_val=1.0e32):
     -------
     Viscosity: float
     """
-    return min((2*B*(2.0*(du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]))**((n-1.0)/(2.0*n))),max_val)
+    return min((B/(2.0*(du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]))**((n-1.0)/(2.0*n))),max_val)
 
 
 def main():
@@ -179,6 +221,8 @@ def main():
     # surface to calculate slope later (could finite-difference now, but let's be 
     # finite element-y
     zs=surfDEM(thick)
+    # inverted beta
+    beta=betaDEM()
 
     # Create our model
     model=classesFEM.Model('floatingsmith.msh')
@@ -191,59 +235,54 @@ def main():
     dzs(model.mesh,zs)
 
     # Add some equation properties to the model
-    model.add_equation(equationsFEM.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2)))
+    model.add_equation(equationsFEM.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta))
 
-    # Grounded boundaries, done lazily since 2,4 are not inflows so what do we do?
-    model.add_BC('dirichlet',10,vdm)
+    # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
-    model.add_BC('dirichlet',4,vdm)
+    model.add_BC('dirichlet',6,vdm)
+    model.add_BC('dirichlet',38,vdm)
 
     # Boundary conditions for the cutouts
-    for cut in [8,60,81]:
+    for cut in [10,60,81]:
         model.add_BC('dirichlet',cut,vdm)
 
     # Getting dicey. Hopefully this is stress-free
-    for shelf in [6,38]: # smith and kohler respectively
-        # let's be lazy right now
-        model.add_BC('dirichlet',shelf,vdm)
-        #model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
-
-
-
+    for shelf in [4,8]: # smith and kohler respectively
+        #model.add_BC('dirichlet',shelf,vdm)
+        model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
 
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(nu,h=thick,b=0.1,nl_maxiter=100,nl_tolerance=1.0e-8,method='GMRES')
+    nlmodel.iterate(testnu,h=thick,nl_maxiter=100,nl_tolerance=1.0e-8,method='CG')
 
 
     nlmodel.plotSolution(show=True)
-    nlmodel.plotSolution(show=True,threeD=False,vel=True,cutoff=5000.0)
+    nlmodel.plotSolution(show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
     return nlmodel
 
 
 def test():
-    model=classesFEM.Model('smalltestmesh.msh')
-    model.add_equation(equationsFEM.shallowShelf(g=-9.8))
-    model.add_BC('dirichlet',1,lambda x:[10.0,10.0])
-    #model.add_BC('dirichlet',3,lambda x:[10.0,10.0])
+    model=classesFEM.Model('testmesh.msh')
+    model.add_equation(equationsFEM.shallowShelf(g=10.0,rho=1000.0))
+    model.add_BC('dirichlet',1,lambda x:[0.1,0.0])
+    model.add_BC('dirichlet',3,lambda x:[0.2,0.0])
     #model.add_BC('dirichlet',2,lambda x:[10.0,10.0])
     #model.add_BC('dirichlet',4,lambda x:[10.0,10.0])
     #model.add_BC('neumann',1,lambda x:[0.0,0.0])
-    model.add_BC('neumann',3,lambda x:[0.0,0.0])
+    #model.add_BC('neumann',3,lambda x:[0.0,0.0])
     model.add_BC('neumann',2,lambda x:[0.0,0.0])
     model.add_BC('neumann',4,lambda x:[0.0,0.0])
-    surf = lambda x : 2.0
-    dzs(model.mesh,lambda x:0.0)
+    #surf = lambda x : 2.0
+    dzs(model.mesh,lambda x: 0.0)
 
     nlmodel=model.makeIterate()
-    nlmodel.iterate(nu,b=1.0e10,h=lambda x: 1.0,relaxation=1.0,nl_tolerance=1.0e-8)
+    nlmodel.iterate(testnu,b=0.0,h=lambda x: 1.0,relaxation=1.0,nl_tolerance=1.0e-8)
     nlmodel.plotSolution(show=True)
-    nlmodel.plotSolution(show=True,threeD=False,vel=True)
-    print(nlmodel.linMod.matrix.toarray())
+    #nlmodel.plotSolution(show=True,threeD=False,vel=True)
     return nlmodel
 
 
 if __name__=='__main__':
-    test()
-    #main()
+    #test()
+    main()

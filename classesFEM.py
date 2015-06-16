@@ -440,16 +440,15 @@ class Mesh:
         colors = ['b', 'k', 'r', 'c', 'g', 'm', 'darkred', 'darkgreen',
                   'darkslategray', 'saddlebrown', 'darkorange', 'darkmagenta', 'y']
         plot_these = np.sort(list(self.physents.keys()))[0:-1]
-        plt_lines = {key: None for key in plot_these}
+        plt_lines = {}
         for i, key in enumerate(plot_these):
             for j, element in enumerate(self.physents[key]):
                 if j == 0:
                     plt_lines[key], = plt.plot(
-                        *self.elements[element].pvecs(), color=colors[i], label=str(key))
+                        *self.elements[element].pvecs(), color=colors[i], label='Border '+str(key))
                 else:
                     plt.plot(*self.elements[element].pvecs(), color=colors[i])
-        plt.legend(
-            list(plt_lines.values()), ['Border ' + num for num in map(str, plot_these)])
+        plt.legend(handles=list(plt_lines.values()))
         if axis is not None:
             plt.axis(axis)
         if show:
@@ -802,6 +801,7 @@ class ModelIterate:
         Mesh=self.mesh
         dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
         neumann=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='neumann']
+        print(neumann,dirichlet)
         b_funcs={edgeval[0]:edgeval[1][1] for edgeval in BCs.items()}
         edges=np.sort(list(Mesh.physents.keys()))[0:-1]
         listed_edges=np.sort(dirichlet+neumann)
@@ -933,11 +933,11 @@ class ModelIterate:
 
                 # Set the values on the right hand side
                 if time is not None:
-                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords(),time)[0]
-                    self.rhs[2*node]=function(self.mesh.nodes[node].coords(),time)[1]
+                    self.rhs[2*(node-1)]=function(self.mesh.nodes[node].coords(),time)[0]
+                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords(),time)[1]
                 else:
-                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords())[0]
-                    self.rhs[2*node]=function(self.mesh.nodes[node].coords())[1]
+                    self.rhs[2*(node-1)]=function(self.mesh.nodes[node].coords())[0]
+                    self.rhs[2*node-1]=function(self.mesh.nodes[node].coords())[1]
 
                 # zero out the off-diagonal elements to get the condition correct
                 # and keep symmetry if we have it
@@ -1162,7 +1162,6 @@ class LinearModel(ModelIterate):
                 self.matrix=self.matrix-diags()
             else:
                 raise ValueError('Cannot do that timestepping stategy')
-
         sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
         return sol
 
@@ -1320,7 +1319,7 @@ class NonLinearModel:
                     ax = fig.add_subplot(111, projection='3d')
                     ax.plot_trisurf(self.model.mesh.coords[:,0],self.model.mesh.coords[:,1],Z=np.sqrt(self.sol[0::2]**2+self.sol[1::2]**2),cmap=cm.jet)
                 else:
-                    ctr=plt.contourf(mat_sol[0],mat_sol[1],np.sqrt(mat_sol[2]**2+mat_sol[3]**2),levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+                    ctr=plt.contourf(mat_sol[0],mat_sol[1],np.sqrt(mat_sol[2]**2+mat_sol[3]**2),50)
                     plt.colorbar(ctr)
                 if savefig is not None:
                     plt.savefig(savefig)
