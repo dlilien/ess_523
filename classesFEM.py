@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -1568,7 +1568,7 @@ def main():
     mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
     mo.add_BC('neumann',4,lambda x:0.0)
     m=LinearModel(mo)
-    #m.iterate()
+    m.iterate()
 
 
     admo=Model('524_project/testmesh.msh')
