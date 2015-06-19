@@ -13,8 +13,8 @@ Try doing the shallow shelf approximation on Smith Glacier
 import sys
 sys.path.append('..')
 sys.path.append('../lib')
-import equationsFEM
-import classesFEM
+from lib import equations
+from lib import classes
 from glib3 import gtif2mat_fn
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
@@ -117,21 +117,11 @@ def dzs(mesh,surface):
         element.dzs=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)
 
 
-def nu(nlmodel,velocity,B_0=None,temp=lambda x: -10.0,n=3.0,max_val=1.0e32):
-    """Calculate the viscosity of ice given a velocity field and a temperature
+class nuDEM:
+    """Class for doing the viscosity calculation
 
-    Remember viscosity is a function of strain rate not velocity, so we need to
-    do some calculating of gradients (definitely do this with finite elements since
-    we get the previous velocity on the grid points with FEM)
-
-    Sets the values on the elements of the nlmodel.
-
-    Parameters
-    ----------
-    nlmodel : classesFEM.NonLinearModel
-        The model we are finding the viscosity for
-    velocity : array
-        The previous solution
+    critical_shear_rate : float,optional
+        Minimum shear rate for shear calculations
     B_0: int, optional
         Fixed viscosity parameter. Defaults to None, just uses standard functions.
     temp: function, optional
@@ -141,23 +131,47 @@ def nu(nlmodel,velocity,B_0=None,temp=lambda x: -10.0,n=3.0,max_val=1.0e32):
     max_val: float, optional
         Return this if the strain is zero (causes division error). Defaults to 1.0e32
     """
+    def __init__(self,critical_shear_rate=1.0e-09,B_0=None,temp=lambda x: -10.0,n=3.0):
+        self.critical_shear_rate=critical_shear_rate
+        self.B_0=B_0
+        self.temp=temp
+        self.n=n
+    
+    
+    def __call__(self,nlmodel,velocity,*args,**kwargs):
+        """Calculate the viscosity of ice given a velocity field and a temperature
 
-    # save some typing for things we will need to use a lot
-    elements=nlmodel.model.mesh.elements
+        Remember viscosity is a function of strain rate not velocity, so we need to
+        do some calculating of gradients (definitely do this with finite elements since
+        we get the previous velocity on the grid points with FEM)
 
-    # We are going to calculate the viscosity element-wise since this is how we have
-    # the velocity gradients. The gradients are piecewise constant, so we don't need
-    # to do anything fancy with Gauss Points.
+        Sets the values on the elements of the nlmodel.
 
-    for element in elements.values():
-        du=np.sum([velocity[2*(number-1)]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-        dv=np.sum([velocity[2*number-1]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-        if not hasattr(element,'b'):
-            if B_0 is None:
-                element._b=getArrheniusFactor(np.sum([gpt[0]*temp(element.F(gpt[1:])) for gpt in element.gpoints]))
-            else:
-                element._b=B_0
-        element.nu=visc(du,dv,element._b,n=n,max_val=max_val)
+        Parameters
+        ----------
+        nlmodel : classes.NonLinearModel
+            The model for which we are finding the viscosity
+        velocity : array
+            The previous solution
+        """
+
+        # save some typing for things we will need to use a lot
+        elements=nlmodel.model.mesh.elements
+
+        # We are going to calculate the viscosity element-wise since this is how we have
+        # the velocity gradients. The gradients are piecewise constant, so we don't need
+        # to do anything fancy with Gauss Points.
+
+        for element in elements.values():
+            du=np.sum([velocity[2*(number-1)]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
+            dv=np.sum([velocity[2*number-1]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
+            if not hasattr(element,'_b'):
+                if self.B_0 is None:
+                    element._af=getArrheniusFactor(np.sum([gpt[0]*self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
+                else:
+                    element._af=self.B_0
+            element.nu=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate)
+        print('Average viscosity is ',np.average([elm.nu for elm in elements.values()]),end='  ')
 
 
 def getArrheniusFactor(temp):
@@ -193,14 +207,60 @@ def testnu(nlmodel,*args,**kwargs):
         element.nu=1.0e12
 
 
-def visc(du,dv,B,n=3.0,max_val=1.0e32):
+def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e9*yearInSeconds):
     """The actual viscosity formula, called by nu
     
     Returns
     -------
     Viscosity: float
     """
-    return min((B/(2.0*(du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]))**((n-1.0)/(2.0*n))),max_val)
+
+
+    # Get the coefficient
+    pref=(yearInSeconds*af)**(-1.0/3.0)*1.0e-6
+    strainRate=du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]
+    if strainRate<critical_shear_rate:
+        strainRate=critical_shear_rate
+    return pref*strainRate**(-(n-1.0)/(2*n))
+
+
+class tempDEM:
+    """Use some lapse rates and a surface DEM to calculate temperature
+    
+    Coordinates must be in Antarctic Polar Stereographic, or you need to write a new function to calculate latitude
+    Parameters
+    ----------
+    surf : function
+        Surface height as a function of height, temperature
+    lat_lapse : float,optional
+        Lapse rate per degree of latitude
+    alt_lapse : float,optional
+        Lapse rater per meter of elevation
+    base : float,optional
+        Temperature at the equator at 0 degrees
+    """
+    def __init__(self,surf,lat_lapse=0.68775,alt_lapse=9.14e-3,base=34.36):
+        self.ll = lat_lapse
+        self.al = alt_lapse
+        self.surf=surf
+        self.base = base
+    def __call__(self, pt):
+        """ Return the temperature in Celcius
+
+        Parameters
+        ----------
+        pt : array
+           The coordinates of the point (x,y)
+
+        Returns
+        -------
+        temp : float
+           Temperature in degrees C
+        """
+
+        lat=(-np.pi/2.0 + 2.0 * np.arctan(np.sqrt(pt[0]**2.0 + pt[1]**2.0)/(2.0*6371225.0*0.97276)))*360.0/(2.0*np.pi)
+        return self.base  - self.ll * abs(lat) - self.al * self.surf(pt)
+
 
 
 def main():
@@ -208,7 +268,7 @@ def main():
 
     Returns
     -------
-    nlmodel: classesFEM.NonLinearModel
+    nlmodel: classes.NonLinearModel
         The model object
     """
 
@@ -223,9 +283,13 @@ def main():
     zs=surfDEM(thick)
     # inverted beta
     beta=betaDEM()
+    # surface temperature
+    temp=tempDEM(zs)
+    # basic viscosity class
+    nu=nuDEM(temp=temp)
 
     # Create our model
-    model=classesFEM.Model('floatingsmith.msh')
+    model=classes.Model('floatingsmith.msh')
 
     # The model now has a mesh associate (mesh.model) to which we attach properties
     # which are not going to change during the simulation (i.e. everything but
@@ -235,7 +299,7 @@ def main():
     dzs(model.mesh,zs)
 
     # Add some equation properties to the model
-    model.add_equation(equationsFEM.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta))
+    model.add_equation(equations.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
@@ -247,14 +311,13 @@ def main():
         model.add_BC('dirichlet',cut,vdm)
 
     # Getting dicey. Hopefully this is stress-free
-    for shelf in [4,8]: # smith and kohler respectively
-        #model.add_BC('dirichlet',shelf,vdm)
+    for shelf in [4,8]: # Crosson and Dotson respectively
         model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
 
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(testnu,h=thick,nl_maxiter=100,nl_tolerance=1.0e-8,method='CG')
+    nlmodel.iterate(nu,relaxation=0.8,h=thick,nl_maxiter=100,nl_tolerance=1.0e-8,method='CG')
 
 
     nlmodel.plotSolution(show=True)
@@ -263,8 +326,8 @@ def main():
 
 
 def test():
-    model=classesFEM.Model('testmesh.msh')
-    model.add_equation(equationsFEM.shallowShelf(g=10.0,rho=1000.0))
+    model=classes.Model('testmesh.msh')
+    model.add_equation(equations.shallowShelf(g=10.0,rho=1000.0))
     model.add_BC('dirichlet',1,lambda x:[0.1,0.0])
     model.add_BC('dirichlet',3,lambda x:[0.2,0.0])
     #model.add_BC('dirichlet',2,lambda x:[10.0,10.0])
