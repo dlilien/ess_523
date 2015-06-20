@@ -254,7 +254,7 @@ def main():
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(testnu,h=thick,nl_maxiter=100,nl_tolerance=1.0e-8,method='CG')
+    nlmodel.iterate(testnu,h=thick,nl_maxiter=10,nl_tolerance=1.0e-8,method='CG')
 
 
     nlmodel.plotSolution(show=True)
