@@ -11,6 +11,7 @@ These are a bunch (hopefully) of equations that the FEM code can solve, and the 
 """
 
 import numpy as np
+cimport numpy as np
 
 class Equation:
     """Class for equations. Really just make a callable function API.
@@ -158,7 +159,8 @@ class shallowShelf(Equation):
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
-    def __init__(self,g=9.8,rho=917.0,b=lambda x: 0.0,**kwargs):
+
+    def __init__(self,float g=9.8,float rho=917.0,b=lambda x: 0.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
@@ -175,11 +177,9 @@ class shallowShelf(Equation):
      
         if 'thickness' in kwargs:
             self.thickness = kwargs['thickness']
-        elif 'h' in kwargs:
-            self.thickness = kwargs['h']
 
 
-    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
+    def __call__(self,int node1,int node2,list elements,int max_nei=12,rhs=False,**kwargs):
         """Attempt to solve the shallow-shelf approximation.
 
 

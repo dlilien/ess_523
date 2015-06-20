@@ -12,5 +12,6 @@ Some information, and compile the cython code
 
 from distutils.core import setup
 from Cython.Build import cythonize
+import numpy
 
-setup( ext_modules = cythonize("lib/*.pyx") )
+setup( ext_modules = cythonize("lib/*.pyx"), include_dirs = [numpy.get_include()] )

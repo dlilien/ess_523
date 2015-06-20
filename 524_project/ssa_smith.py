@@ -262,7 +262,6 @@ class tempDEM:
         return self.base  - self.ll * abs(lat) - self.al * self.surf(pt)
 
 
-
 def main():
     """Do an SSA approximation on Smith Glacier, steady state
 
@@ -317,11 +316,11 @@ def main():
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(nu,relaxation=0.8,h=thick,nl_maxiter=100,nl_tolerance=1.0e-8,method='CG')
+    nlmodel.iterate(nu,relaxation=0.8,h=thick,nl_maxiter=10,nl_tolerance=1.0e-8,method='CG')
 
 
-    nlmodel.plotSolution(show=True)
-    nlmodel.plotSolution(show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    #nlmodel.plotSolution(show=True)
+    #nlmodel.plotSolution(show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
     return nlmodel
 
 

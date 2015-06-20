@@ -58,30 +58,34 @@ from os.path import splitext
 from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
 from scipy.interpolate import griddata
+cimport numpy as np
 Axes3D # Avoid the warning
 
 
-class Node:
-    _curr_id = 0
+ctypedef np.int32_t cINT32
+ctypedef np.double_t cDOUBLE
 
-    def __init__(self, x, y, z=0.0, ident=None, parent=None):
+
+class Node:
+    curr_id = 0
+
+    def __init__(self, float x, float y, float z=0.0, ident=None, parent=None):
         self.ass_elms = []
         self.neighbors = {} # Dictionary of nodes and the connecting elements
         self.parent = parent
-        self.x = float(x)
-        self.y = float(y)
-        self.z = float(z)
+        self.x = x
+        self.y = y
         if ident is not None:
             self.id = ident
-            Node._curr_id = max(Node._curr_id, self.id)
+            Node.curr_id = max(Node.curr_id, self.id)
         else:
-            self.id = Node._curr_id
-            Node._curr_id += 1
+            self.id = Node.curr_id
+            Node.curr_id += 1
 
     def __str__(self):
-        return 'Node number ' + str(self.id) + 'at (' + str(self.x) + ',' + str(self.y) + ',' + str(self.z) + ')\nAssociate with elements ' + ', '.join(map(str, self.ass_elms))
+        return 'Node number ' + str(self.id) + 'at (' + str(self.x) + ',' + str(self.y) + ')\nAssociate with elements ' + ', '.join(map(str, self.ass_elms))
 
-    def add_elm(self, elm, pos):
+    def add_elm(self, int elm, int pos):
         """Add an element using this node, with this as the pos'th node"""
         for node in self.parent.elements[elm].nodes:
             if node != self.id:
@@ -93,11 +97,7 @@ class Node:
 
     def coords(self):
         """Convenience wrapper for coordinates"""
-        return np.array([self.x, self.y, self.z])
-
-    def form_basis(self):
-        """Write something to note which basis functions are associated?"""
-        pass
+        return np.array([self.x, self.y])
 
 
 class Element(object):
@@ -126,7 +126,7 @@ class Element(object):
     F : function
         The mapping from the parent element to this element
     """
-    _curr_id = 0
+    curr_id = 0
 
     @staticmethod
     def init_element_gmsh(params, parent=None):
@@ -241,14 +241,13 @@ class TriangElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 3:
-            print('Bad Triangle')
-            return None
+            raise ValueError('Bad Triangle')
         if ident is not None:
             self.id = ident
-            Element._curr_id = max(Element._curr_id, self.id)
+            Element.curr_id = max(Element.curr_id, self.id)
         else:
-            self.id = Element._curr_id
-            Element._curr_id += 1
+            self.id = Element.curr_id
+            Element.curr_id += 1
         self.F=None
         self.Finv=None
         self.parent = parent
@@ -324,14 +323,13 @@ class LineElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 2:
-            print('Bad Line')
-            return None
+            raise ValueError('Not a valid line')
         if ident is not None:
             self.id = ident
-            Element._curr_id = max(Element._curr_id, self.id)
+            Element.curr_id = max(Element.curr_id, self.id)
         else:
-            self.id = Element._curr_id
-            Element._curr_id += 1
+            self.id = Element.curr_id
+            Element.curr_id += 1
         self.parent = parent
         self.nodes = nodes
         self.kind = LineElement.kind
@@ -663,7 +661,7 @@ class ModelIterate:
             raise TypeError('Degrees of freedom must be an integer')
 
 
-    def MakeMatrixEQ(self,max_nei=12,**kwargs):
+    def MakeMatrixEQ(self,int max_nei=12,**kwargs):
         """Make the matrix form, max_nei is the most neighbors/element
         
         Parameters
@@ -676,6 +674,9 @@ class ModelIterate:
         All keyword arguments are simply passed along to the equation you are trying to solve.
         This should include things like source terms, conductivities, or other arguments needed by the equation.
         """
+        #cdef np.ndarray[cINT32, ndim=1] row, col
+        #cdef np.ndarray[cDOUBLE, ndim=1] data,rhs
+        cdef int i, m, malloc, nnz
 
         if self.dofs==1:
             # The easy version, scalar variable to solve for
@@ -715,12 +716,15 @@ class ModelIterate:
             # Set things up so we can do velocity
 
             # Empty vectors to accept the sparse info, make them large for cross terms
-            rows=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
-            cols=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
-            data=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2)
+            malloc=max_nei*self.mesh.numnodes*self.dofs**2
+            m=self.mesh.numnodes*self.dofs
 
-            #Vector for the rhs
-            rhs=np.zeros(self.mesh.numnodes*self.dofs)
+            rows=np.zeros(malloc,dtype=np.int16)
+            cols=np.zeros(malloc,dtype=np.int16)
+            data=np.zeros(malloc)
+
+
+            rhs=np.zeros(m)
 
             #Count how many entries we have
             nnz=0
@@ -776,7 +780,7 @@ class ModelIterate:
                     nnz += 4
 
             # set up our matrix for real
-            self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs))
+            self.matrix=csc_matrix((data,(rows,cols)),shape=(m,m))
             self.rhs=rhs
             return None
 
