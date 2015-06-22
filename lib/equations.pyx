@@ -94,7 +94,7 @@ class advectionDiffusion(Equation):
     def __init__(self):
         self.lin=True
         self.dofs=1
-    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,**kwargs):
+    def __call__(self,int node1,int node2,list elements,int max_nei=8,rhs=False,**kwargs):
         """Solve the advection-diffusion equation
         
         Keyword Arguments
@@ -240,17 +240,13 @@ class shallowShelf(Equation):
 
         # Now loop through the neighboring elements
         for i,elm in enumerate(elements):
-
-
-            # The indices of each node within the element, to tell us which weights and bases to use
-
             n1b=elm[1].nodes.index(node1) 
             # this should be the index of the weight/equation (j direction in the supplement)
-
             n2b=elm[1].nodes.index(node2)
             # this is the index of the basis function (i direction in the supplement)
             
             gps=[(gp[0],elm[1].F(gp[1])) for gp in elm[1].gpts]
+            
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
             ints[i,0]=2*elm[1].area*(elm[1].b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
