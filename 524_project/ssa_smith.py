@@ -297,7 +297,7 @@ def main():
     dzs(model.mesh,zs)
 
     # Add some equation properties to the model
-    model.add_equation(equations.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta))
+    model.add_equation(equations.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
@@ -315,7 +315,7 @@ def main():
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(nu,relaxation=0.8,h=thick,nl_maxiter=10,nl_tolerance=1.0e-8,method='CG')
+    nlmodel.iterate(nu,relaxation=0.8,nl_maxiter=10,nl_tolerance=1.0e-8,method='CG')
 
 
     #nlmodel.plotSolution(show=True)

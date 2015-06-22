@@ -8,7 +8,7 @@
 
 """Define a number of different classes which collectively constitute a finite element solver
 
-All these definitions are contained in the file classesFEM.py
+All these definitions are contained in the file classes.py
 
 Begin by importing a mesh from GMSH to create an instance of the :py:class:`Mesh` class.
 This is best done by creating a :py:class:`Model` instance with the GMSH file as the argument; this will give you a model with associated mesh that you can then specify equation and boundary conditions for.
@@ -21,7 +21,7 @@ Examples
 Basic solution to a simple case with mesh in testmesh.msh
 
 >>> mo=Model('524_project/testmesh.msh')
->>> mo.add_equation(equationsFEM.diffusion())
+>>> mo.add_equation(equations.diffusion())
 >>> mo.add_BC('dirichlet',1,lambda x: 10.0)
 >>> mo.add_BC('neumann',2,lambda x:-1.0)
 >>> mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
@@ -33,7 +33,7 @@ Nonlinear models are similarly straightforward.
 The boundary conditions must accept time as an argument and get an initial condition, for example
 
 >>> mod=Model('524_project/testmesh.msh',td=True)
->>> mod.add_equation(equationsFEM.diffusion())
+>>> mod.add_equation(equations.diffusion())
 >>> mod.add_BC('dirichlet',1,lambda x,t: 26.0)
 >>> mod.add_BC('neumann',2,lambda x,t:0.0)
 >>> mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
@@ -56,7 +56,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d.axes3d as p3
 from warnings import warn
-from equationsFEM import Equation
+from .equations import Equation
 from os.path import splitext
 from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
@@ -491,7 +491,7 @@ class Model:
     
     Parameters
     ----------
-    Mesh : string or classesFEM.mesh
+    Mesh : string or classes.mesh
        This can be a .msh or .shp file, or an already imported mesh
     
     Keyword Arguments
@@ -507,7 +507,7 @@ class Model:
         Points to the associated mesh
     dofs : int
         The number of degrees of freedom in the equation to solve. e.g. 2 for 2D velocity
-    eqn : :py:class:`equationsFEM.Equation`
+    eqn : :py:class:`equations.Equation`
         The equation to solve, should be attached using :py:meth:`add_equation`
     BCs : dictionary
         The associated boundary conditions, should be attached using :py:meth:`add_BC` 
@@ -558,7 +558,7 @@ class Model:
 
         Parameters
         ----------
-        eqn : `equationsFEM.Equation`
+        eqn : `equations.Equation`
            Equation to solve
 
         Raises
@@ -569,9 +569,9 @@ class Model:
 
         try:
             if not Equation in type(eqn).__bases__:
-                raise TypeError('Need equation of type equationsFEM.Equation')
+                raise TypeError('Need equation of type equations.Equation')
         except AttributeError:
-            raise TypeError('Need equation of type equationsFEM.Equation')
+            raise TypeError('Need equation of type equations.Equation')
         self.eqn=eqn
         self.dofs=eqn.dofs
         if eqn.lin:
@@ -635,9 +635,9 @@ class ModelIterate:
 
        Parameters
        ----------
-       model : classesFEM.Model
+       model : classes.Model
            The model, with equations and boundary conditions
-       eqn : :py:class:`equationsFEM.Equation`,optional
+       eqn : :py:class:`equations.Equation`,optional
            The equation to solve, if it differs from that tied to the model
            e.g. in a time dependent model
 
@@ -801,7 +801,6 @@ class ModelIterate:
         Mesh=self.mesh
         dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
         neumann=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='neumann']
-        print(neumann,dirichlet)
         b_funcs={edgeval[0]:edgeval[1][1] for edgeval in BCs.items()}
         edges=np.sort(list(Mesh.physents.keys()))[0:-1]
         listed_edges=np.sort(dirichlet+neumann)
@@ -1560,9 +1559,9 @@ class ConvergenceError(Exception):
 
 
 def main():
-    import equationsFEM
+    import equations
     mo=Model('524_project/testmesh.msh')
-    mo.add_equation(equationsFEM.diffusion())
+    mo.add_equation(equations.diffusion())
     mo.add_BC('dirichlet',1,lambda x: 10.0)
     mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
     mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
@@ -1572,7 +1571,7 @@ def main():
 
 
     admo=Model('524_project/testmesh.msh')
-    admo.add_equation(equationsFEM.advectionDiffusion())
+    admo.add_equation(equations.advectionDiffusion())
     admo.add_BC('dirichlet',1,lambda x: 15.0)
     admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
     admo.add_BC( 'dirichlet',3,lambda x: 5.0)
@@ -1581,7 +1580,7 @@ def main():
     am.iterate(v=lambda x:np.array([1.0,0.0]))
 
     mod=Model('524_project/testmesh.msh',td=True)
-    mod.add_equation(equationsFEM.diffusion())
+    mod.add_equation(equations.diffusion())
     mod.add_BC('dirichlet',1,lambda x,t: 26.0)
     mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
     mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
@@ -1612,7 +1611,7 @@ if __name__ == '__main__':
 
     @do_cprofile
     def upwinding():
-        import equationsFEM
+        import equations
         """test upwinding"""
         class k:
             def __init__(self,vel,k_old,alpha):
@@ -1629,7 +1628,7 @@ if __name__ == '__main__':
         k_up=k(vel,k_old,alpha)
 
         admo=Model('524_project/testmesh.msh')
-        admo.add_equation(equationsFEM.advectionDiffusion())
+        admo.add_equation(equations.advectionDiffusion())
         admo.add_BC('dirichlet',1,lambda x: 15.0)
         admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
         admo.add_BC( 'dirichlet',3,lambda x: 5.0)
