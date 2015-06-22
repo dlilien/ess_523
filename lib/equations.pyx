@@ -175,8 +175,15 @@ class shallowShelf(Equation):
         # Some optional parameters:
         self.b = b
      
-        if 'thickness' in kwargs:
+        if 'h' in kwargs:
+            self.thickness=None
+            self.h=kwargs['h']
+        elif 'thickness' in kwargs:
             self.thickness = kwargs['thickness']
+            self.h=None
+        else:
+            self.h=None
+            self.thickness=None 
 
 
     def __call__(self,int node1,int node2,list elements,int max_nei=12,rhs=False,**kwargs):
@@ -216,17 +223,6 @@ class shallowShelf(Equation):
             for elm in elements:
                 elm[1].b=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
-        if 'h' in kwargs:
-            for elm in elements:
-                elm[1].h=kwargs['h']
-        if not hasattr(elements[0][1],'h'):
-            if hasattr(elements[0][1],'thickness'):
-                for elm in elements:
-                    print(elm[0])
-                    elm[1].h=lambda x: elm[1].thickness
-            else:
-                raise AttributeError('No thickness found')
-
         if not hasattr(elements[0][1],'dzs'):
             raise AttributeError('No surface slope associated with mesh, need tuple/array')
 
@@ -245,26 +241,42 @@ class shallowShelf(Equation):
             n2b=elm[1].nodes.index(node2)
             # this is the index of the basis function (i direction in the supplement)
             
+            # calculate the gauss points once only
             gps=[(gp[0],elm[1].F(gp[1])) for gp in elm[1].gpts]
             
+            # thickness being passed gets precedence
+            if 'thickness' in kwargs:
+                elm[1].h=np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in gps])
+
+            # For first time through if constant thickness
+            if not hasattr(elm[1],'h'):
+                if self.h is not None:
+                    elm[1].h=self.h
+                elif self.thickness is not None:
+                    for elm in elements:
+                        elm[1].h=np.sum([gp[0]*(self.thickness(gp[1])) for gp in gps])
+                else:
+                    raise AttributeError('No thickness found')
+
+
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
-            ints[i,0]=2*elm[1].area*(elm[1].b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
+            ints[i,0]=2*elm[1].area*(elm[1].b**2+elm[1].h*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
             # 2,2
-            ints[i,1]=2*elm[1].area*(elm[1].b**2+np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
+            ints[i,1]=2*elm[1].area*(elm[1].b**2+elm[1].h*elm[1].nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i,2]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            ints[i,2]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*elm[1].h*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i,3]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+            ints[i,3]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*elm[1].h*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
 
         if rhs:
             # TODO the integrals, check for more parameters?
             ints_rhs=np.zeros((max_nei,2))
             for i,elm in enumerate(elements):
                 # 1st SSA eqn (d/dx) rhs
-                ints_rhs[i,0]=self.rho*self.g*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].dzs[0]*elm[1].area
+                ints_rhs[i,0]=self.rho*self.g*elm[1].h*elm[1].dzs[0]*elm[1].area
                 # 2nd SSA eqn (d/dy) rhs
-                ints_rhs[i,1]=self.rho*self.g*np.sum([gp[0]*(elm[1].h(gp[1])) for gp in gps])*elm[1].dzs[1]*elm[1].area
+                ints_rhs[i,1]=self.rho*self.g*elm[1].h*elm[1].dzs[1]*elm[1].area
             
             # return with rhs
             return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3]),np.sum(ints_rhs[:,0]),np.sum(ints_rhs[:,1])
