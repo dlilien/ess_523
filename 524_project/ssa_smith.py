@@ -18,7 +18,7 @@ from lib.glib3 import gtif2mat_fn
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
 
-yearInSeconds=365.25*24.0*60*60 # This will be convenient for units
+yearInSeconds=365.25*24.0*60.0*60.0 # This will be convenient for units
 
 
 class velocityDEMs:
@@ -170,7 +170,7 @@ class nuDEM:
                 else:
                     element._af=self.B_0
             element.nu=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate)
-        print('Average viscosity is ',np.average([elm.nu for elm in elements.values()]),end='  ')
+        print('Average viscosity is {:e}'.format(float(np.average([elm.nu for elm in elements.values()]))),end=' ')
 
 
 def getArrheniusFactor(temp):
@@ -188,11 +188,11 @@ def getArrheniusFactor(temp):
        The prefactor B: float
     """
     if temp<-10:
-        return 3.985e-13*np.exp(-60.0e3/(8.314*(273.15+temp)))
-    elif temp<=0:
-        return 1.916e3*np.exp(-139.0e3/(8.314*(273.15+temp)))
+        return np.exp(-60.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
+    elif temp<0:
+        return np.exp(-115.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
     else:
-        return 1.916e3*np.exp(-139.0e3/(8.314*(273.15)))
+        return np.exp(-115.0e3/8.314*(1.0/273.15))
 
 
 def testnu(nlmodel,*args,**kwargs):
@@ -206,7 +206,7 @@ def testnu(nlmodel,*args,**kwargs):
         element.nu=1.0e12
 
 
-def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e9*yearInSeconds):
+def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e9,units='MPaA'):
     """The actual viscosity formula, called by nu
     
     Returns
@@ -216,11 +216,18 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e9*yearInSeconds):
 
 
     # Get the coefficient
-    pref=(yearInSeconds*af)**(-1.0/3.0)*1.0e-6
+    if units == 'MPaA':
+        pref=(3.5e-25*af)**(-1.0/n)*yearInSeconds**(-(1.0)/n)*1.0e-6
+    elif units == 'PaS':
+        pref=(3.5e-25*af)**(-1.0/n)
+    else:
+        raise ValueError('Units must be MPaA or PaS')
+
+
     strainRate=du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]
     if strainRate<critical_shear_rate:
         strainRate=critical_shear_rate
-    return pref*strainRate**(-(n-1.0)/(2*n))
+    return pref*strainRate**(-(n-1.0)/(2*n))/2.0
 
 
 class tempDEM:
@@ -312,14 +319,17 @@ def main():
     for shelf in [4,8]: # Crosson and Dotson respectively
         model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
 
+        # for debugging:
+        #model.add_BC('dirichlet',shelf,vdm)
+
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(nu,relaxation=0.8,nl_maxiter=10,nl_tolerance=1.0e-8,method='CG')
+    nlmodel.iterate(nu,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG')
 
 
     #nlmodel.plotSolution(show=True)
-    #nlmodel.plotSolution(show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    nlmodel.plotSolution(show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
     return nlmodel
 
 
