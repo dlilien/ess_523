@@ -14,4 +14,12 @@ from distutils.core import setup
 from Cython.Build import cythonize
 import numpy
 
-setup( ext_modules = cythonize("lib/*.pyx"), include_dirs = [numpy.get_include()] )
+setup( name='funniest',
+      version='0.1a1',
+      description='The funniest joke in the world',
+      url='http://github.com/dlilien/fem_2d',
+      author='David Lilien',
+      author_email='dal22@uw.edu',
+      license='MIT',
+      packages=['fem_2d'],
+      ext_modules = cythonize("fem_2d/lib/*.pyx"), include_dirs = [numpy.get_include()] )
