@@ -403,7 +403,7 @@ class Mesh:
             for pos,node in enumerate(self.elements[key].nodes):
                 self.nodes[node].add_elm(key,pos)
         flines = None
-        self.coords=np.r_[[node.coords()[0:-1] for node in list(self.nodes.values())]]
+        self.coords=np.r_[[node.coords()[0:2] for node in list(self.nodes.values())]]
 
     def CreateBases(self,gpts=True,normals=True):
         """Create the finite element basis functions"""
