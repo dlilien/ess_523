@@ -54,7 +54,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d.axes3d as p3
 from warnings import warn
-from equationss import Equation
+from .equations import Equation
 from os.path import splitext
 from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
@@ -354,6 +354,7 @@ class Mesh:
         self.numnodes = 0
         self.numels = 0
 
+
     def __str__(self):
         string = 'Mesh object\nNumber of nodes: ' + \
             str(self.numnodes) + '\nNumber of elements: ' + \
@@ -367,6 +368,7 @@ class Mesh:
         else:
             string += 'No Bases Associated'
         return string
+
 
     def loadgmsh(self, fn):
         with open(fn, 'r') as f:
@@ -400,7 +402,8 @@ class Mesh:
             for pos,node in enumerate(self.elements[key].nodes):
                 self.nodes[node].add_elm(key,pos)
         flines = None
-        self.coords=np.r_[[node.coords()[0:-1] for node in list(self.nodes.values())]]
+        self.coords=np.r_[[node.coords()[0:2] for node in list(self.nodes.values())]]
+
 
     def CreateBases(self,gpts=True,normals=True):
         """Create the finite element basis functions"""
@@ -424,6 +427,7 @@ class Mesh:
                 element._gpts()
                 if normals:
                     element._normal()
+
 
     def PlotBorder(self, show=False, writefile=None, axis=None, fignum=None):
         """Plot out the border of the mesh with different colored borders"""
@@ -449,6 +453,7 @@ class Mesh:
             plt.show()
         if writefile is not None:
             plt.savefig(writefile)
+
 
     def PlotMesh(self, show=False, writefile=None, axis=None, labels=None, fignum=None):
         """Plot out the whole interior mesh structure"""
@@ -485,7 +490,7 @@ class Model:
     
     Parameters
     ----------
-    Mesh : string or classesFEM.mesh
+    Mesh : string or classes.mesh
        This can be a .msh or .shp file, or an already imported mesh
     
     Keyword Arguments
@@ -501,7 +506,7 @@ class Model:
         Points to the associated mesh
     dofs : int
         The number of degrees of freedom in the equation to solve. e.g. 2 for 2D velocity
-    eqn : :py:class:`equationsFEM.Equation`
+    eqn : :py:class:`equations.Equation`
         The equation to solve, should be attached using :py:meth:`add_equation`
     BCs : dictionary
         The associated boundary conditions, should be attached using :py:meth:`add_BC` 
@@ -552,7 +557,7 @@ class Model:
 
         Parameters
         ----------
-        eqn : `equationsFEM.Equation`
+        eqn : `equations.Equation`
            Equation to solve
 
         Raises
@@ -563,9 +568,9 @@ class Model:
 
         try:
             if not Equation in type(eqn).__bases__:
-                raise TypeError('Need equation of type equationsFEM.Equation')
+                raise TypeError('Need equation of type equations.Equation')
         except AttributeError:
-            raise TypeError('Need equation of type equationsFEM.Equation')
+            raise TypeError('Need equation of type equations.Equation')
         self.eqn=eqn
         self.dofs=eqn.dofs
         if eqn.lin:
@@ -629,9 +634,9 @@ class ModelIterate:
 
        Parameters
        ----------
-       model : classesFEM.Model
+       model : classes.Model
            The model, with equations and boundary conditions
-       eqn : :py:class:`equationsFEM.Equation`,optional
+       eqn : :py:class:`equations.Equation`,optional
            The equation to solve, if it differs from that tied to the model
            e.g. in a time dependent model
 
@@ -1558,19 +1563,19 @@ class ConvergenceError(Exception):
 
 
 def main():
-    import equationsFEM
+    import equations
     mo=Model('524_project/testmesh.msh')
-    mo.add_equation(equationsFEM.diffusion())
+    mo.add_equation(equations.diffusion())
     mo.add_BC('dirichlet',1,lambda x: 10.0)
     mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
     mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
     mo.add_BC('neumann',4,lambda x:0.0)
     m=LinearModel(mo)
-    #m.iterate()
+    m.iterate()
 
 
     admo=Model('524_project/testmesh.msh')
-    admo.add_equation(equationsFEM.advectionDiffusion())
+    admo.add_equation(equations.advectionDiffusion())
     admo.add_BC('dirichlet',1,lambda x: 15.0)
     admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
     admo.add_BC( 'dirichlet',3,lambda x: 5.0)
@@ -1579,7 +1584,7 @@ def main():
     am.iterate(v=lambda x:np.array([1.0,0.0]))
 
     mod=Model('524_project/testmesh.msh',td=True)
-    mod.add_equation(equationsFEM.diffusion())
+    mod.add_equation(equations.diffusion())
     mod.add_BC('dirichlet',1,lambda x,t: 26.0)
     mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
     mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
