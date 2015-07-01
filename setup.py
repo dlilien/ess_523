@@ -21,5 +21,5 @@ setup( name='funniest',
       author='David Lilien',
       author_email='dal22@uw.edu',
       license='MIT',
-      packages=['fem_2d'],
-      ext_modules = cythonize("fem2d/core/*.pyx",compiler_directives={'embedsignature': True}), include_dirs = [numpy.get_include()] )
+      packages=['fem_2d']
+      )
