@@ -781,33 +781,3 @@ def bot_for_forward(mesh_dir, botfile_in, partitions=None):
 
 def write_bottom_result(variables, result_fn, fn_out, nodes=False, apps=[2], **kwargs):
     pass
-
-
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(description='Convert filetypes')
-    parser.add_argument('fn', type=str, help='File to convert')
-    parser.add_argument(
-        'dst_type', type=str, choices=['tif', 'xyz', 'xy'], help='Dest. filetype')
-    parser.add_argument('-o', type=str, default=None, help='Output filename')
-    args = parser.parse_args()
-    prefix, suffix = os.path.splitext(args.fn)
-    if suffix == '.' + args.dst_type:
-        print('Destination type is same as source. Quitting.')
-        return 1
-    if args.o is None:
-        args.o = prefix + '.' + args.dst_type
-    if suffix == '.tif':
-        if args.dst_type == 'xy':
-            gtif2xyz_fn_new(args.fn, args.o)
-            return 0
-        elif args.dst_type == 'xyz':
-            gtif2xyz_fn_new(args.fn, args.o)
-            return 0
-    else:
-        print('Conversion type not yet implemented')
-        return 1
-
-
-if __name__ == '__main__':
-    main()

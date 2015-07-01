@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+#cython: embedsignature=True
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -24,7 +25,7 @@ class Equation:
     node2 : int
        The number of the node corresponding to the weight/test function
     elements : list
-       A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
+       A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
     rhs : bool
        If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
     max_nei : int,optional 
@@ -32,9 +33,9 @@ class Equation:
 
     Returns
     -------
-    integrals : float if 1D, 4-tuple if 2D
+    integrals : if 1D, 4-tuple if 2D
        In 1D return the coefficient for the node1, node2 coefficient of the FEM matrix. In 2D, return the ((z1,z1),(z2,z2),(z1,z2),(z2,z1)) coefficients for node1,node2.
-    rhs : float if 1D, 2-tuple if 2D
+    rhs : if 1D, 2-tuple if 2D
        Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
     
     Attributes
@@ -153,12 +154,13 @@ class shallowShelf(Equation):
     Keyword Arguments
     -----------------
     b : float
-       The value of the friction coefficient. Can be a float or a function. I use elemental average values. 
+       The value of the friction coefficient. Can be a or a function. I use elemental average values. 
     thickness : function
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
-    def __init__(self,g=9.8,rho=917.0,b=lambda x: 0.0,**kwargs):
+
+    def __init__( self, b, g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
@@ -181,8 +183,7 @@ class shallowShelf(Equation):
             self.h=None
         else:
             self.h=None
-            self.thickness=None
-        
+            self.thickness=None 
 
 
     def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
@@ -198,7 +199,7 @@ class shallowShelf(Equation):
         node2 : int
            The number of the node corresponding to the weight/test function
         elements : list
-           A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
         max_nei : int,optional 
@@ -222,8 +223,6 @@ class shallowShelf(Equation):
             for elm in elements:
                 elm[1].b=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
-
-
         if not hasattr(elements[0][1],'dzs'):
             raise AttributeError('No surface slope associated with mesh, need tuple/array')
 
@@ -237,19 +236,14 @@ class shallowShelf(Equation):
 
         # Now loop through the neighboring elements
         for i,elm in enumerate(elements):
-
-
-            # The indices of each node within the element, to tell us which weights and bases to use
-
             n1b=elm[1].nodes.index(node1) 
             # this should be the index of the weight/equation (j direction in the supplement)
-
             n2b=elm[1].nodes.index(node2)
             # this is the index of the basis function (i direction in the supplement)
-           
-            #only calculate gauss points once
+            
+            # calculate the gauss points once only
             gps=[(gp[0],elm[1].F(gp[1])) for gp in elm[1].gpts]
-
+            
             # thickness being passed gets precedence
             if 'thickness' in kwargs:
                 elm[1].h=np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in gps])

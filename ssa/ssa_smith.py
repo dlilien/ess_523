@@ -12,47 +12,12 @@ Try doing the shallow shelf approximation on Smith Glacier
 
 import sys
 sys.path.append('..')
-from lib import equations
-from lib import classes
-from lib.glib3 import gtif2mat_fn
+import fem2d
+from fem2d.lib import Raster,gtif2mat_fn,nu,surfaceSlope
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
 
 yearInSeconds=365.25*24.0*60.0*60.0 # This will be convenient for units
-
-
-class velocityDEMs:
-    """Make a class which returns the thickness at a point"""
-    def __init__(self):
-        u_fn='/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_x_vel.tif'
-        v_fn='/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_y_vel.tif'
-
-        # Make spline objects
-        x,y,u=gtif2mat_fn(u_fn)
-        u[np.isnan(u)]=0.0
-        self.uspline=RectBivariateSpline(np.flipud(y),x,np.flipud(u))
-        x,y,v=gtif2mat_fn(v_fn)
-        v[np.isnan(v)]=0.0
-        self.vspline=RectBivariateSpline(np.flipud(y),x,np.flipud(v))
-        
-        print('Velocity Spline Objects Prepared')
-        
-
-    def __call__(self,pt):
-        """Calculate velocity
-
-        Parameters
-        ----------
-        pt : array
-           The x,y coordinate of the location at which to calculate the value
-
-        Returns
-        -------
-        velocity : array
-           The vector velocity
-        """
-
-        return np.array([self.uspline(pt[1],pt[0])[0],self.vspline(pt[1],pt[0])[0]])
 
 
 class thickDEM:
@@ -114,96 +79,6 @@ def dzs(mesh,surface):
     # associate a 2d slope with every mesh point
     for element in mesh.elements.values():
         element.dzs=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)
-
-
-class nuDEM:
-    """Class for doing the viscosity calculation
-
-    critical_shear_rate : float,optional
-        Minimum shear rate for shear calculations
-    B_0: int, optional
-        Fixed viscosity parameter. Defaults to None, just uses standard functions.
-    temp: function, optional
-        A function which returns temperature as a function of position. Defaults to -10.0
-    n: float, optional
-        Exponent in Glen's flow law. Defaults to 3.0.
-    max_val: float, optional
-        Return this if the strain is zero (causes division error). Defaults to 1.0e32
-    """
-    def __init__(self,critical_shear_rate=1.0e-09,B_0=None,temp=lambda x: -10.0,n=3.0):
-        self.critical_shear_rate=critical_shear_rate
-        self.B_0=B_0
-        self.temp=temp
-        self.n=n
-    
-    
-    def __call__(self,nlmodel,velocity,*args,**kwargs):
-        """Calculate the viscosity of ice given a velocity field and a temperature
-
-        Remember viscosity is a function of strain rate not velocity, so we need to
-        do some calculating of gradients (definitely do this with finite elements since
-        we get the previous velocity on the grid points with FEM)
-
-        Sets the values on the elements of the nlmodel.
-
-        Parameters
-        ----------
-        nlmodel : classes.NonLinearModel
-            The model for which we are finding the viscosity
-        velocity : array
-            The previous solution
-        """
-
-        # save some typing for things we will need to use a lot
-        elements=nlmodel.model.mesh.elements
-
-        # We are going to calculate the viscosity element-wise since this is how we have
-        # the velocity gradients. The gradients are piecewise constant, so we don't need
-        # to do anything fancy with Gauss Points.
-
-        for element in elements.values():
-            du=np.sum([velocity[2*(number-1)]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-            dv=np.sum([velocity[2*number-1]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-            if not hasattr(element,'_b'):
-                if self.B_0 is None:
-                    element._af=getArrheniusFactor(np.sum([gpt[0]*self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
-                else:
-                    element._af=self.B_0
-            element.nu=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate)
-        print('Average viscosity is {:e}'.format(float(np.average([elm.nu for elm in elements.values()]))),end=' ')
-
-
-def getArrheniusFactor(temp):
-    """ Get the temperature-dependent factor for Glen's Flow Law.
-
-    Will just give viscosity at 0 degrees if temperature is above zero.
-
-    Parameters
-    ----------
-    Temp: float
-       The temperature in celcius
-
-    Returns
-    -------
-       The prefactor B: float
-    """
-    if temp<-10:
-        return np.exp(-60.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
-    elif temp<0:
-        return np.exp(-115.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
-    else:
-        return np.exp(-115.0e3/8.314*(1.0/273.15))
-
-
-def testnu(nlmodel,*args,**kwargs):
-    elements=nlmodel.model.mesh.elements
-
-    # We are going to calculate the viscosity element-wise since this is how we have
-    # the velocity gradients. The gradients are piecewise constant, so we don't need
-    # to do anything fancy with Gauss Points.
-
-    for element in elements.values():
-        element.nu=1.0e12
 
 
 def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e9,units='MPaA'):
@@ -273,14 +148,17 @@ def main():
 
     Returns
     -------
-    nlmodel: classes.NonLinearModel
+    nlmodel: fem2d.NonLinearModel
         The model object
     """
 
     # Make some splines of a few different properties
 
     #velocity for comparison
-    vdm=velocityDEMs()
+    #vdm=velocityDEMs()
+    vdm=Raster('/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_x_vel.tif','/users/dlilien/smith/Velocities/1990s/tiffs/mosaicOffsets_y_vel.tif')
+
+
     #thickness for computation
     thick=thickDEM()
     # surface to calculate slope later (could finite-difference now, but let's be 
@@ -291,20 +169,20 @@ def main():
     # surface temperature
     temp=tempDEM(zs)
     # basic viscosity class
-    nu=nuDEM(temp=temp)
+    nus=nu(temp=temp)
 
     # Create our model
-    model=classes.Model('floatingsmith.msh')
+    model=fem2d.Model('floatingsmith.msh')
 
     # The model now has a mesh associate (mesh.model) to which we attach properties
     # which are not going to change during the simulation (i.e. everything but
     # viscosity
 
     # surface slope
-    dzs(model.mesh,zs)
+    surfaceSlope(model.mesh,zs)
 
     # Add some equation properties to the model
-    model.add_equation(equations.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
+    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
@@ -325,7 +203,7 @@ def main():
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
 
-    nlmodel.iterate(nu,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG')
+    nlmodel.iterate(nus,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG')
 
 
     #nlmodel.plotSolution(show=True)
@@ -334,8 +212,8 @@ def main():
 
 
 def test():
-    model=classes.Model('testmesh.msh')
-    model.add_equation(equations.shallowShelf(g=10.0,rho=1000.0))
+    model=fem2d.Model('testmesh.msh')
+    model.add_equation(fem2d.shallowShelf(g=10.0,rho=1000.0))
     model.add_BC('dirichlet',1,lambda x:[0.1,0.0])
     model.add_BC('dirichlet',3,lambda x:[0.2,0.0])
     #model.add_BC('dirichlet',2,lambda x:[10.0,10.0])
@@ -348,7 +226,7 @@ def test():
     dzs(model.mesh,lambda x: 0.0)
 
     nlmodel=model.makeIterate()
-    nlmodel.iterate(testnu,b=0.0,h=lambda x: 1.0,relaxation=1.0,nl_tolerance=1.0e-8)
+    nlmodel.iterate(nu,b=0.0,h=lambda x: 1.0,relaxation=1.0,nl_tolerance=1.0e-8)
     nlmodel.plotSolution(show=True)
     #nlmodel.plotSolution(show=True,threeD=False,vel=True)
     return nlmodel

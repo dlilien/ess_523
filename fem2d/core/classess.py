@@ -1,4 +1,5 @@
-#! /usr/bin/env python3
+#! /usr/bin/env python
+#cython: embedsignature=True
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -6,22 +7,23 @@
 #
 # Distributed under terms of the MIT license.
 
+
 """Define a number of different classes which collectively constitute a finite element solver
 
-All these definitions are contained in the file classes.py
+All these definitions are contained in the file classesFEM.py
 
 Begin by importing a mesh from GMSH to create an instance of the :py:class:`Mesh` class.
 This is best done by creating a :py:class:`Model` instance with the GMSH file as the argument; this will give you a model with associated mesh that you can then specify equation and boundary conditions for.
 Next, the equation you want to solve (derived from :py:class:`Equation`) should be associated with the model using the :py:meth:`Model.add_equation` method.
 The boundary conditions should then be attached using :py:meth:`Model.add_BC`.
-At this point you can either create the object to solve the equation in steady state using the :py:meth:`Model.makeIterate` method, or you can create a :py:class:`TimeDependentModel` instance around this model. In either case, you should call the :py:meth:`iterate` method of the resultant object.
+At this poyou can either create the object to solve the equation in steady state using the :py:meth:`Model.makeIterate` method, or you can create a :py:class:`TimeDependentModel` instance around this model. In either case, you should call the :py:meth:`iterate` method of the resultant object.
 
 Examples
 --------
 Basic solution to a simple case with mesh in testmesh.msh
 
 >>> mo=Model('524_project/testmesh.msh')
->>> mo.add_equation(equations.diffusion())
+>>> mo.add_equation(equationsFEM.diffusion())
 >>> mo.add_BC('dirichlet',1,lambda x: 10.0)
 >>> mo.add_BC('neumann',2,lambda x:-1.0)
 >>> mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
@@ -33,7 +35,7 @@ Nonlinear models are similarly straightforward.
 The boundary conditions must accept time as an argument and get an initial condition, for example
 
 >>> mod=Model('524_project/testmesh.msh',td=True)
->>> mod.add_equation(equations.diffusion())
+>>> mod.add_equation(equationsFEM.diffusion())
 >>> mod.add_BC('dirichlet',1,lambda x,t: 26.0)
 >>> mod.add_BC('neumann',2,lambda x,t:0.0)
 >>> mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
@@ -41,13 +43,9 @@ The boundary conditions must accept time as an argument and get an initial condi
 >>> initial_condition=lambda x:1+(x[0]-5)**2
 >>> mi=TimeDependentModel(mod,10.0,2,initial_condition) # This does the solving too
 >>> mi.animate(show=True) # Visualize the results
-
-
-
-
 """
 
-import numpy as np
+from __future__ import print_function
 from scipy.linalg import solve
 from scipy.sparse.linalg import bicgstab,cg,spsolve,gmres,spilu,LinearOperator
 import matplotlib.pyplot as plt
@@ -56,33 +54,35 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d.axes3d as p3
 from warnings import warn
-from .equations import Equation
+from equationss import Equation
 from os.path import splitext
 from scipy.sparse import csc_matrix,diags
 from scipy.spatial import cKDTree as KDTree
 from scipy.interpolate import griddata
+import numpy as np
 Axes3D # Avoid the warning
 
 
+
+
 class Node:
-    _curr_id = 0
+    curr_id = 0
 
     def __init__(self, x, y, z=0.0, ident=None, parent=None):
         self.ass_elms = []
         self.neighbors = {} # Dictionary of nodes and the connecting elements
         self.parent = parent
-        self.x = float(x)
-        self.y = float(y)
-        self.z = float(z)
+        self.x = x
+        self.y = y
         if ident is not None:
             self.id = ident
-            Node._curr_id = max(Node._curr_id, self.id)
+            Node.curr_id = max(Node.curr_id, self.id)
         else:
-            self.id = Node._curr_id
-            Node._curr_id += 1
+            self.id = Node.curr_id
+            Node.curr_id += 1
 
     def __str__(self):
-        return 'Node number ' + str(self.id) + 'at (' + str(self.x) + ',' + str(self.y) + ',' + str(self.z) + ')\nAssociate with elements ' + ', '.join(map(str, self.ass_elms))
+        return 'Node number ' + str(self.id) + 'at (' + str(self.x) + ',' + str(self.y) + ')\nAssociate with elements ' + ', '.join(map(str, self.ass_elms))
 
     def add_elm(self, elm, pos):
         """Add an element using this node, with this as the pos'th node"""
@@ -96,11 +96,7 @@ class Node:
 
     def coords(self):
         """Convenience wrapper for coordinates"""
-        return np.array([self.x, self.y, self.z])
-
-    def form_basis(self):
-        """Write something to note which basis functions are associated?"""
-        pass
+        return np.array([self.x, self.y])
 
 
 class Element(object):
@@ -116,20 +112,20 @@ class Element(object):
         The number of the element
     parent : :py:class:`Mesh`
         The mesh to which the element is associated
-    nodes : list of ints
+    nodes : of ints
         The mesh nodes belonging to this element
     cent : 2-tuple of floats
         The center of this element
-    gpoints : list of 3-tuples (weight,x,y)
+    gpoints : of 3-tuples (weight,x,y)
         The gauss points with weights of the parent element
     bases : functions
         The basis functions of the element, ordered so the i-th is 1 on the i-th node
-    dbases : list of 2-tuples (dx,dy)
+    dbases : of 2-tuples (dx,dy)
         The derivatives of the basis functions
     F : function
         The mapping from the parent element to this element
     """
-    _curr_id = 0
+    curr_id = 0
 
     @staticmethod
     def init_element_gmsh(params, parent=None):
@@ -178,7 +174,7 @@ class Element(object):
         Returns
         -------
         nodes : list
-            A list of coordinate pairs for nodes; nodwise as opposed to :py:meth:`Element.pvecs`
+            A of coordinate pairs for nodes; nodwise as opposed to :py:meth:`Element.pvecs`
         """
         nodes_return = []
         for node in self.nodes:
@@ -244,14 +240,13 @@ class TriangElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 3:
-            print('Bad Triangle')
-            return None
+            raise ValueError('Bad Triangle')
         if ident is not None:
             self.id = ident
-            Element._curr_id = max(Element._curr_id, self.id)
+            Element.curr_id = max(Element.curr_id, self.id)
         else:
-            self.id = Element._curr_id
-            Element._curr_id += 1
+            self.id = Element.curr_id
+            Element.curr_id += 1
         self.F=None
         self.Finv=None
         self.parent = parent
@@ -327,14 +322,13 @@ class LineElement(Element):
 
     def __init__(self, nodes, ident, parent, skwargs):
         if not len(nodes) == 2:
-            print('Bad Line')
-            return None
+            raise ValueError('Not a valid line')
         if ident is not None:
             self.id = ident
-            Element._curr_id = max(Element._curr_id, self.id)
+            Element.curr_id = max(Element.curr_id, self.id)
         else:
-            self.id = Element._curr_id
-            Element._curr_id += 1
+            self.id = Element.curr_id
+            Element.curr_id += 1
         self.parent = parent
         self.nodes = nodes
         self.kind = LineElement.kind
@@ -491,7 +485,7 @@ class Model:
     
     Parameters
     ----------
-    Mesh : string or classes.mesh
+    Mesh : string or classesFEM.mesh
        This can be a .msh or .shp file, or an already imported mesh
     
     Keyword Arguments
@@ -507,7 +501,7 @@ class Model:
         Points to the associated mesh
     dofs : int
         The number of degrees of freedom in the equation to solve. e.g. 2 for 2D velocity
-    eqn : :py:class:`equations.Equation`
+    eqn : :py:class:`equationsFEM.Equation`
         The equation to solve, should be attached using :py:meth:`add_equation`
     BCs : dictionary
         The associated boundary conditions, should be attached using :py:meth:`add_BC` 
@@ -558,7 +552,7 @@ class Model:
 
         Parameters
         ----------
-        eqn : `equations.Equation`
+        eqn : `equationsFEM.Equation`
            Equation to solve
 
         Raises
@@ -569,9 +563,9 @@ class Model:
 
         try:
             if not Equation in type(eqn).__bases__:
-                raise TypeError('Need equation of type equations.Equation')
+                raise TypeError('Need equation of type equationsFEM.Equation')
         except AttributeError:
-            raise TypeError('Need equation of type equations.Equation')
+            raise TypeError('Need equation of type equationsFEM.Equation')
         self.eqn=eqn
         self.dofs=eqn.dofs
         if eqn.lin:
@@ -581,7 +575,7 @@ class Model:
         return None
 
 
-    def add_BC(self,cond_type,target_edge,function=lambda x:0.0):
+    def add_BC(self,cond_type,target_edge,function):
         """Assign a boundary condition (has some tests)
         
         Parameters
@@ -591,7 +585,7 @@ class Model:
         target_edge : int
             The number of the boundary to which this is being assigned
         function : function
-            What the value is on this boundary, defaults to zero in steady state,
+            What the value is on this boundary,
             must be specified if time dependent
         """
         # You can also just manually edit the self.BCs dictionary
@@ -635,9 +629,9 @@ class ModelIterate:
 
        Parameters
        ----------
-       model : classes.Model
+       model : classesFEM.Model
            The model, with equations and boundary conditions
-       eqn : :py:class:`equations.Equation`,optional
+       eqn : :py:class:`equationsFEM.Equation`,optional
            The equation to solve, if it differs from that tied to the model
            e.g. in a time dependent model
 
@@ -679,6 +673,8 @@ class ModelIterate:
         All keyword arguments are simply passed along to the equation you are trying to solve.
         This should include things like source terms, conductivities, or other arguments needed by the equation.
         """
+        #cdef np.ndarray[cINT32, ndim=1] row, col
+        #cdef np.ndarray[cDOUBLE, ndim=1] data,rhs
 
         if self.dofs==1:
             # The easy version, scalar variable to solve for
@@ -718,12 +714,15 @@ class ModelIterate:
             # Set things up so we can do velocity
 
             # Empty vectors to accept the sparse info, make them large for cross terms
-            rows=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
-            cols=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2,dtype=np.int16)
-            data=np.zeros(max_nei*self.mesh.numnodes*self.dofs**2)
+            malloc=max_nei*self.mesh.numnodes*self.dofs**2
+            m=self.mesh.numnodes*self.dofs
 
-            #Vector for the rhs
-            rhs=np.zeros(self.mesh.numnodes*self.dofs)
+            rows=np.zeros(malloc,dtype=np.int16)
+            cols=np.zeros(malloc,dtype=np.int16)
+            data=np.zeros(malloc)
+
+
+            rhs=np.zeros(m)
 
             #Count how many entries we have
             nnz=0
@@ -779,7 +778,7 @@ class ModelIterate:
                     nnz += 4
 
             # set up our matrix for real
-            self.matrix=csc_matrix((data,(rows,cols)),shape=(self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs))
+            self.matrix=csc_matrix((data,(rows,cols)),shape=(m,m))
             self.rhs=rhs
             return None
 
@@ -807,7 +806,7 @@ class ModelIterate:
         if not all(edges==listed_edges):
             for edge in listed_edges:
                 if not edge in edges:
-                    print('You list a non existent border '+str(edge)+' in types')
+                    print('You a non existent border '+str(edge)+' in types')
                     print('Available borders are ',edges)
                     raise ValueError('Unknown border')
             else:
@@ -820,7 +819,7 @@ class ModelIterate:
             print('Error with borders')
             for edge in list(b_funcs.keys()):
                 if not edge in edges:
-                    print('You list a non existent border '+str(edge)+' in types')
+                    print('You a non existent border '+str(edge)+' in types')
                     print('Available borders are ',edges)
                     raise ValueError ('Unknown border')
             else:
@@ -1054,7 +1053,7 @@ class ModelIterate:
 
         Returns
         -------
-        mat_sol : list of arrays
+        mat_sol : of arrays
             The gridded solution, returned as x,y,solution
         """
 
@@ -1081,7 +1080,7 @@ class ModelIterate:
             # Do a quick check before we do the slow steps
             if savefig is not None:
                 if not len(savefig)==self.dofs:
-                    raise ValueError('savefig must be list of strings same length as dofs')
+                    raise ValueError('savefig must be of strings same length as dofs')
 
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -1241,7 +1240,7 @@ class NonLinearModel:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                 else:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))
-                print('Relative Change: {:e}'.format(relchange))
+                print('Relative Change: {:f}'.format(relchange))
 
                 #Check if we converged
                 if relchange<nl_tolerance and i != 0:
@@ -1289,7 +1288,7 @@ class NonLinearModel:
             if savefig is not None:
                 if not vel:
                     if not len(savefig)==self.dofs:
-                        raise ValueError('savefig must be list of strings same length as dofs')
+                        raise ValueError('savefig must be of strings same length as dofs')
 
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
@@ -1416,7 +1415,7 @@ class TimeDependentModel:
         Returns
         -------
         solution : list
-           A list of arrays of the node-wise solution at each timestep. The first entry is the initial condition.
+           A of arrays of the node-wise solution at each timestep. The first entry is the initial condition.
         """
         sol=[np.array([self.ic(pt) for pt in self.model.mesh.coords])]
         if self.model.eqn.lin:
@@ -1446,7 +1445,7 @@ class TimeDependentModel:
 
 
     def plotSolution(self,iterate=-1,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
-        """ Plot the solution at a some point during the run
+        """ Plot the solution at a some poduring the run
 
         For parameter options see :py:meth:`ModelIterate.plotSolution`. In addition, supports
         Parameters
@@ -1559,19 +1558,19 @@ class ConvergenceError(Exception):
 
 
 def main():
-    import equations
+    import equationsFEM
     mo=Model('524_project/testmesh.msh')
-    mo.add_equation(equations.diffusion())
+    mo.add_equation(equationsFEM.diffusion())
     mo.add_BC('dirichlet',1,lambda x: 10.0)
     mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
     mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
     mo.add_BC('neumann',4,lambda x:0.0)
     m=LinearModel(mo)
-    m.iterate()
+    #m.iterate()
 
 
     admo=Model('524_project/testmesh.msh')
-    admo.add_equation(equations.advectionDiffusion())
+    admo.add_equation(equationsFEM.advectionDiffusion())
     admo.add_BC('dirichlet',1,lambda x: 15.0)
     admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
     admo.add_BC( 'dirichlet',3,lambda x: 5.0)
@@ -1580,7 +1579,7 @@ def main():
     am.iterate(v=lambda x:np.array([1.0,0.0]))
 
     mod=Model('524_project/testmesh.msh',td=True)
-    mod.add_equation(equations.diffusion())
+    mod.add_equation(equationsFEM.diffusion())
     mod.add_BC('dirichlet',1,lambda x,t: 26.0)
     mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
     mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
@@ -1611,7 +1610,7 @@ if __name__ == '__main__':
 
     @do_cprofile
     def upwinding():
-        import equations
+        import equationsFEM
         """test upwinding"""
         class k:
             def __init__(self,vel,k_old,alpha):
@@ -1628,7 +1627,7 @@ if __name__ == '__main__':
         k_up=k(vel,k_old,alpha)
 
         admo=Model('524_project/testmesh.msh')
-        admo.add_equation(equations.advectionDiffusion())
+        admo.add_equation(equationsFEM.advectionDiffusion())
         admo.add_BC('dirichlet',1,lambda x: 15.0)
         admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
         admo.add_BC( 'dirichlet',3,lambda x: 5.0)
