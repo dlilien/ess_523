@@ -131,7 +131,7 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
             strainRate=critical_shear_rate
     return pref*strainRate**(-(n-1.0)/(2*n))/2.0
 
-def surfaceSlpe(mesh,surface):
+def surfaceSlope(mesh,surface):
     """Calculate the surface slope on a mesh using nodal values and basis functions"""
     # note that this function could be repeatedly re-called for a time-dependent simulation
 

@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+#cython: embedsignature=True
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -11,7 +12,6 @@ These are a bunch (hopefully) of equations that the FEM code can solve, and the 
 """
 
 import numpy as np
-cimport numpy as np
 
 class Equation:
     """Class for equations. Really just make a callable function API.
@@ -25,7 +25,7 @@ class Equation:
     node2 : int
        The number of the node corresponding to the weight/test function
     elements : list
-       A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
+       A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
     rhs : bool
        If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
     max_nei : int,optional 
@@ -33,9 +33,9 @@ class Equation:
 
     Returns
     -------
-    integrals : float if 1D, 4-tuple if 2D
+    integrals : if 1D, 4-tuple if 2D
        In 1D return the coefficient for the node1, node2 coefficient of the FEM matrix. In 2D, return the ((z1,z1),(z2,z2),(z1,z2),(z2,z1)) coefficients for node1,node2.
-    rhs : float if 1D, 2-tuple if 2D
+    rhs : if 1D, 2-tuple if 2D
        Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
     
     Attributes
@@ -94,7 +94,7 @@ class advectionDiffusion(Equation):
     def __init__(self):
         self.lin=True
         self.dofs=1
-    def __call__(self,int node1,int node2,list elements,int max_nei=8,rhs=False,**kwargs):
+    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,**kwargs):
         """Solve the advection-diffusion equation
         
         Keyword Arguments
@@ -154,13 +154,13 @@ class shallowShelf(Equation):
     Keyword Arguments
     -----------------
     b : float
-       The value of the friction coefficient. Can be a float or a function. I use elemental average values. 
+       The value of the friction coefficient. Can be a or a function. I use elemental average values. 
     thickness : function
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
 
-    def __init__(self,float g=9.8,float rho=917.0,b=lambda x: 0.0,**kwargs):
+    def __init__( self, b, g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
@@ -186,7 +186,7 @@ class shallowShelf(Equation):
             self.thickness=None 
 
 
-    def __call__(self,int node1,int node2,list elements,int max_nei=12,rhs=False,**kwargs):
+    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
         """Attempt to solve the shallow-shelf approximation.
 
 
@@ -199,7 +199,7 @@ class shallowShelf(Equation):
         node2 : int
            The number of the node corresponding to the weight/test function
         elements : list
-           A list of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
         max_nei : int,optional 

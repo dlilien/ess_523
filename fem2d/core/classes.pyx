@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+#cython: embedsignature=True
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -577,7 +578,7 @@ class Model:
         return None
 
 
-    def add_BC(self,cond_type,target_edge,function=lambda x:0.0):
+    def add_BC(self,cond_type,target_edge,function):
         """Assign a boundary condition (has some tests)
         
         Parameters
@@ -587,7 +588,7 @@ class Model:
         target_edge : int
             The number of the boundary to which this is being assigned
         function : function
-            What the value is on this boundary, defaults to zero in steady state,
+            What the value is on this boundary,
             must be specified if time dependent
         """
         # You can also just manually edit the self.BCs dictionary

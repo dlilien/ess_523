@@ -12,11 +12,8 @@ Try doing the shallow shelf approximation on Smith Glacier
 
 import sys
 sys.path.append('..')
-from fem_2d.lib import equations
-from fem_2d.lib import classes
-from fem_2d.lib.rasterlib import Raster
-from fem_2d.lib.glib3 import gtif2mat_fn
-from fem_2d.lib.ssalib import nu,surfaceSlope
+import fem2d
+from fem2d.lib import Raster,gtif2mat_fn,nu,surfaceSlope
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
 
@@ -151,7 +148,7 @@ def main():
 
     Returns
     -------
-    nlmodel: classes.NonLinearModel
+    nlmodel: fem2d.NonLinearModel
         The model object
     """
 
@@ -175,7 +172,7 @@ def main():
     nus=nu(temp=temp)
 
     # Create our model
-    model=classes.Model('floatingsmith.msh')
+    model=fem2d.Model('floatingsmith.msh')
 
     # The model now has a mesh associate (mesh.model) to which we attach properties
     # which are not going to change during the simulation (i.e. everything but
@@ -185,7 +182,7 @@ def main():
     surfaceSlope(model.mesh,zs)
 
     # Add some equation properties to the model
-    model.add_equation(equations.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
+    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
@@ -215,8 +212,8 @@ def main():
 
 
 def test():
-    model=classes.Model('testmesh.msh')
-    model.add_equation(equations.shallowShelf(g=10.0,rho=1000.0))
+    model=fem2d.Model('testmesh.msh')
+    model.add_equation(fem2d.shallowShelf(g=10.0,rho=1000.0))
     model.add_BC('dirichlet',1,lambda x:[0.1,0.0])
     model.add_BC('dirichlet',3,lambda x:[0.2,0.0])
     #model.add_BC('dirichlet',2,lambda x:[10.0,10.0])

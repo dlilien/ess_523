@@ -12,12 +12,10 @@ Let's try to do the forward problem for Ken's class!
 
 import sys
 sys.path.append('..')
-sys.path.append('../lib')
-import classesFEM as cfm
-import  equationsFEM
+import fem2d
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
-from glib3 import gtif2mat_fn
+from fem2d.lib import gtif2mat_fn
 #import matplotlib.pyplot as plt
 
 
@@ -99,17 +97,17 @@ def main():
     You get plots from this, it also returns
     the model object
     """
-    admo=cfm.Model('fullsmithmesh.msh')
+    admo=fem2d.Model('fullsmithmesh.msh')
     vel=velocityDEMs()
     diffu=k(vel)
     acc=accumulationDEM()
-    admo.add_equation(equationsFEM.advectionDiffusion())
+    admo.add_equation(fem2d.advectionDiffusion()) 
     smbbm=thickDEM()
     admo.add_BC('dirichlet',2,smbbm)
     admo.add_BC('dirichlet',4,smbbm) # 'dirichlet',2,lambda x: 10.0)
     admo.add_BC( 'dirichlet',32,smbbm)
     admo.add_BC('dirichlet',54,smbbm)
-    am=cfm.LinearModel(admo)
+    am=fem2d.LinearModel(admo)
     am.iterate(v=vel,f=acc,k=diffu)
     am.plotSolution(savefig='figs/wild2D.eps',threeD=False,cutoff=5000.0,x_steps=200,y_steps=200,savesol=True)
     am.plotSolution(savefig='figs/wild3D.eps')

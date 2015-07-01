@@ -22,4 +22,4 @@ setup( name='funniest',
       author_email='dal22@uw.edu',
       license='MIT',
       packages=['fem_2d'],
-      ext_modules = cythonize("fem_2d/lib/*.pyx"), include_dirs = [numpy.get_include()] )
+      ext_modules = cythonize("fem2d/core/*.pyx",compiler_directives={'embedsignature': True}), include_dirs = [numpy.get_include()] )
