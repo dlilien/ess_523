@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -96,6 +96,44 @@ def getArrheniusFactor(temp):
 
 
 
+class lapse_tempDEM:
+    """Use some lapse rates and a surface DEM to calculate temperature
+    
+    Coordinates must be in Antarctic Polar Stereographic, or you need to write a new function to calculate latitude
+    Parameters
+    ----------
+    surf : function
+        Surface height as a function of height, temperature
+    lat_lapse : float,optional
+        Lapse rate per degree of latitude
+    alt_lapse : float,optional
+        Lapse rater per meter of elevation
+    base : float,optional
+        Temperature at the equator at 0 degrees
+    """
+    def __init__(self,surf,lat_lapse=0.68775,alt_lapse=9.14e-3,base=34.36):
+        self.ll = lat_lapse
+        self.al = alt_lapse
+        self.surf=surf
+        self.base = base
+    def __call__(self, pt):
+        """ Return the temperature in Celcius
+
+        Parameters
+        ----------
+        pt : array
+           The coordinates of the point (x,y)
+
+        Returns
+        -------
+        temp : float
+           Temperature in degrees C
+        """
+
+        lat=(-np.pi/2.0 + 2.0 * np.arctan(np.sqrt(pt[0]**2.0 + pt[1]**2.0)/(2.0*6371225.0*0.97276)))*360.0/(2.0*np.pi)
+        return self.base  - self.ll * abs(lat) - self.al * self.surf(pt)
+
+
 def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
     """The actual viscosity formula, called by nu
 
@@ -125,7 +163,7 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
         raise ValueError('Units must be MPaA or PaS')
 
 
-    strainRate=du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1]
+    strainRate=float(du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1])
     if critical_shear_rate is not None:
         if strainRate<critical_shear_rate:
             strainRate=critical_shear_rate

@@ -11,15 +11,13 @@ Some information, and compile the cython code
 """
 
 from distutils.core import setup
-from Cython.Build import cythonize
-import numpy
 
-setup( name='funniest',
+setup( name='fem2d',
       version='0.1a1',
-      description='The funniest joke in the world',
+      description='A simple finite elment solver',
       url='http://github.com/dlilien/fem_2d',
       author='David Lilien',
       author_email='dal22@uw.edu',
       license='MIT',
-      packages=['fem_2d']
+      packages=['fem2d','fem2d.core','fem2d.lib']
       )

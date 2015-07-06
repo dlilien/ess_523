@@ -27,9 +27,11 @@ class Raster:
     -----------------
     subtract : bool
        If True, __call__ returns the first minus the second DEM
+    ndv : dict
+       Dictionary of no data values. Listed as dem number (0 or 1), then a string (e.g. <0.0)
     """
     def __init__(self,*DEMs,**kwargs):
-        print('Initializing DEMs')
+        print('Initializing DEM for ',*DEMs)
         if len(DEMs)==0:
             raise RuntimeError('You need to give at least one raster name')
         elif len(DEMs)>2:
@@ -37,8 +39,12 @@ class Raster:
         else:
             dems=[gtif2mat_fn(DEM) for DEM in DEMs]
 
-        for dem in dems:
+        for i,dem in enumerate(dems):
             dem[2][np.isnan(dem[2])]=0.0
+            if 'ndv' in kwargs:
+                if i in kwargs['ndv']:
+                    dem[2][eval('dem[2]'+kwargs['ndv'][i])]=0.0
+
 
 
         def splinify(dem):
@@ -63,10 +69,21 @@ class Raster:
 
     def __call__(self,pt):
         if self.splines==1:
-            print('1')
             return self.spline1(pt[1],pt[0])[0]
         else:
             if self.subtract:
                 return self.spline1(pt[1],pt[0])[0]-self.spline2(pt[1],pt[0])[0]
             else:
                 return np.array([self.spline1(pt[1],pt[0])[0],self.spline2(pt[1],pt[0])[0]])
+
+
+    def spline(self,pt,number=1):
+        if number==1:
+            return self.spline1(pt[1],pt[0])[0]
+        elif number==2:
+            try:
+                return self.spline2(pt[1],pt[0])[0]
+            except AttributeError:
+                raise ValueError('Object has only 1 DEM associated')
+        else:
+            raise ValueError('Object does not have this many DEMs associated')

@@ -241,12 +241,9 @@ class shallowShelf(Equation):
             n2b=elm[1].nodes.index(node2)
             # this is the index of the basis function (i direction in the supplement)
             
-            # calculate the gauss points once only
-            gps=[(gp[0],elm[1].F(gp[1])) for gp in elm[1].gpts]
-            
             # thickness being passed gets precedence
             if 'thickness' in kwargs:
-                elm[1].h=np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in gps])
+                elm[1].h=2*np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in elm[1].gpts])
 
             # For first time through if constant thickness
             if not hasattr(elm[1],'h'):
@@ -254,7 +251,7 @@ class shallowShelf(Equation):
                     elm[1].h=self.h
                 elif self.thickness is not None:
                     for elm in elements:
-                        elm[1].h=np.sum([gp[0]*(self.thickness(gp[1])) for gp in gps])
+                        elm[1].h=2*np.sum([gp[0]*(self.thickness(gp[1])) for gp in elm[1].gpts])
                 else:
                     raise AttributeError('No thickness found')
 

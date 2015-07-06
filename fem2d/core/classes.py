@@ -10,7 +10,7 @@
 
 """Define a number of different classes which collectively constitute a finite element solver
 
-All these definitions are contained in the file classesFEM.py
+All these definitions are contained in the file classes.py
 
 Begin by importing a mesh from GMSH to create an instance of the :py:class:`Mesh` class.
 This is best done by creating a :py:class:`Model` instance with the GMSH file as the argument; this will give you a model with associated mesh that you can then specify equation and boundary conditions for.
@@ -23,7 +23,7 @@ Examples
 Basic solution to a simple case with mesh in testmesh.msh
 
 >>> mo=Model('524_project/testmesh.msh')
->>> mo.add_equation(equationsFEM.diffusion())
+>>> mo.add_equation(equations.diffusion())
 >>> mo.add_BC('dirichlet',1,lambda x: 10.0)
 >>> mo.add_BC('neumann',2,lambda x:-1.0)
 >>> mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
@@ -35,7 +35,7 @@ Nonlinear models are similarly straightforward.
 The boundary conditions must accept time as an argument and get an initial condition, for example
 
 >>> mod=Model('524_project/testmesh.msh',td=True)
->>> mod.add_equation(equationsFEM.diffusion())
+>>> mod.add_equation(equations.diffusion())
 >>> mod.add_BC('dirichlet',1,lambda x,t: 26.0)
 >>> mod.add_BC('neumann',2,lambda x,t:0.0)
 >>> mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
@@ -184,7 +184,7 @@ class Element(object):
 
     def _gpts(self):
         """A function to return the gauss points. I use 4 for 2d, 2 for 1d"""
-        self.gpts=[(pt[0],self._Finv()(pt[1:3])) for pt in self.gpoints]
+        self.gpts=[(pt[0],self._F()(pt[1:3])) for pt in self.gpoints]
 
 
 class TriangElement(Element):
@@ -211,6 +211,7 @@ class TriangElement(Element):
             self.area=abs((ps[1][0] - ps[0][0])*( ps[2][1] - ps[0][1] )-(ps[2][0] - ps[0][0])*( ps[1][1] - ps[0][1] ))/2.0
             self.Finv=lambda p: solve(np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]], [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]), np.array(p).reshape(len(p), 1) - np.array([[ps[0][0]], [ps[0][1]]]))
         return self.Finv
+
 
     def _normal(self):
         """Dummy to be lazy"""
@@ -424,7 +425,6 @@ class Mesh:
                     i: fnctn for i, fnctn in enumerate(element._bases())}
                 self.dbases[number] = {
                     i: fnctn for i, fnctn in enumerate(element._dbases())}
-                element._gpts()
                 if normals:
                     element._normal()
 
@@ -1034,11 +1034,16 @@ class ModelIterate:
         return self.sol
 
 
-    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
+    def plotSolution(self,target=None,nodewise=True,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,figsize=(15,10)):
         """ Plot the solution to the differential equation
 
         Parameters
         ----------
+        target : string,optional
+           What variable to grid. Defaults to the solution to the diff-EQ
+        nodewise : bool,optional
+           Indicates that things should be plotted at the nodes (as opposed to elements). Defaults to true.
+
         threeD : bool,optional
            If True, plot as 3D tri_surf, otherwise grid and plot 2D. Defaults to True.
         savefig : string,optional
@@ -1064,7 +1069,7 @@ class ModelIterate:
 
 
         if self.dofs==1:
-            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
                 self.matsol=mat_sol
             fig=plt.figure(figsize=figsize)
@@ -1087,7 +1092,7 @@ class ModelIterate:
                 if not len(savefig)==self.dofs:
                     raise ValueError('savefig must be of strings same length as dofs')
 
-            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+            mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
                 # we want to have the option of not re-computing
                 self.matsol=mat_sol
@@ -1109,11 +1114,16 @@ class ModelIterate:
             return mat_sol
            
 
-    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+    def sparse2mat(self, target=None, nodewise=True, x_steps=500, y_steps=500, cutoff_dist=2000.0):
         """Grid up the solution, with potentially concave data
         
         Parameters
         ----------
+        target : string,optional
+           What variable to grid. Defaults to the solution to the diff-EQ
+        nodewise : bool,optional
+           Indicates that things should be plotted at the nodes (as opposed to elements). Defaults to true.
+
         x_steps : int,optional
            The number of pixels in x, defaults to 500
         y_steps : int,optional
@@ -1265,21 +1275,60 @@ class NonLinearModel:
         return new
 
 
-    def plotSolution(self,threeD=True,savefig=None,show=False,x_steps=20,y_steps=20,cutoff=5,savesol=False,vel=False,figsize=(15,10)):
+    def plotSolution(self, target=None, nodewise=True, threeD=True, savefig=None, show=False, x_steps=500, y_steps=500, cutoff=7000, savesol=False, vel=False, figsize=(15,10), clims=None):
         """ Plot the resulting nonlinear solution.
 
         See :py:meth:`ModelIterate.plotSolution` for explanation of parameters.
         """
-        if self.dofs==1:
-            mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
+        if nodewise:
+            coords=self.model.mesh.coords
+            if target is not None:
+                if target in self.vars:
+                    sol=self.vars[target]
+                else:
+                    sol=np.zeros(self.model.mesh.numnodes)
+                    for node in self.model.mesh.nodes:
+                        try:
+                            sol[node.id]=getattr(node,target)
+                        except AttributeError:
+                            raise AttributeError('Neither model nor nodes has desired variable')
+            else:
+                sol=self.sol
+
+        else:
+            # Elementwise
+            tri_els=self.model.mesh.eltypes[2]
+            coords=np.zeros([len(tri_els),2])
+            sol=np.zeros(len(tri_els))
+            if type(getattr(self.model.mesh.elements[tri_els[0]],target))==float or type(getattr(self.model.mesh.elements[tri_els[0]],target))==np.float64:
+                for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    sol[i]=getattr(self.model.mesh.elements[element],target)
+            elif type(getattr(self.model.mesh.elements[tri_els[0]],target))==list:
+                 for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    sol[i]=getattr(self.model.mesh.elements[element],target)[0][1]
+            else:
+                for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    try:
+                        sol[i]=getattr(self.model.mesh.elements[element],target)(element.cent)
+                    except:
+                        raise RuntimeError('Problems with parsing function for plotting')
+
+
+        if self.dofs==1 or target is not None:
+            mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
                 self.matsol=mat_sol
             fig=plt.figure(figsize=figsize)
             if threeD:
                 ax = fig.add_subplot(111, projection='3d')
-                ax.plot_trisurf(self.mesh.coords[:,0],self.mesh.coords[:,1],Z=self.sol,cmap=cm.jet)
+                ax.plot_trisurf(coords[:,0],coords[:,1],Z=sol,cmap=cm.jet)
             else:
-                ctr=plt.contourf(*mat_sol,levels=np.linspace(0.9*min(self.sol),1.1*max(self.sol),50))
+                if clims is None:
+                    clims=[0.9*min(sol),1.1*max(sol)]
+                ctr=plt.contourf(*mat_sol,levels=np.linspace(*clims,num=50))
                 plt.colorbar(ctr)
             if savefig is not None:
                 plt.savefig(savefig)
@@ -1332,11 +1381,15 @@ class NonLinearModel:
             return mat_sol
            
 
-    def sparse2mat(self, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+    def sparse2mat(self, target=None, nodewise=True, x_steps=500, y_steps=500, cutoff_dist=2000.0):
         """Grid up the solution, with potentially concave data
         
         Parameters
         ----------
+        target : string,optional
+           What variable to grid. Defaults to the solution to the diff-EQ
+        nodewise : bool,optional
+           Indicates that things should be plotted at the nodes (as opposed to elements). Defaults to true.
         x_steps : int,optional
            The number of pixels in x, defaults to 500
         y_steps : int,optional
@@ -1349,33 +1402,68 @@ class NonLinearModel:
            Matrix Solution : list
               Matrix solution of the form x,y,solution_1,*solution_2 where solution_2 is only returned if the variable we are solving for is 2d.
         """
-        coords=self.model.mesh.coords
-        if self.dofs==1:
-            data=self.sol
-            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
-            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
-            XI, YI = np.meshgrid(tx, ty)
-            ZI = griddata(coords, data, (XI, YI), method='linear')
-            tree = KDTree(coords)
-            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-            dist = dist.reshape(XI.shape)
-            ZI[dist > cutoff_dist] = np.nan
-            return [tx, ty, ZI]
+        if nodewise:
+            coords=self.model.mesh.coords
+            if target is not None:
+                if target in self.vars:
+                    data=self.vars[target]
+                else:
+                    data=np.zeros(self.model.mesh.numnodes)
+                    for node in self.model.mesh.nodes:
+                        try:
+                            data[node.id]=getattr(node,target)
+                        except AttributeError:
+                            raise AttributeError('Neither model nor nodes has desired variable')
 
-        elif self.dofs==2:
-            data1=self.sol[::2]
-            data2=self.sol[1::2]
-            tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
-            ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
-            XI, YI = np.meshgrid(tx, ty)
-            ZI = griddata(coords, data1, (XI, YI), method='linear')
-            ZI2 = griddata(coords, data2, (XI, YI), method='linear')
-            tree = KDTree(coords)
-            dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-            dist = dist.reshape(XI.shape)
-            ZI[dist > cutoff_dist] = np.nan
-            ZI2[dist > cutoff_dist] = np.nan
-            return [tx, ty, ZI, ZI2]
+
+            elif self.dofs==2:
+                data1=self.sol[::2]
+                data2=self.sol[1::2]
+                tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+                ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+                XI, YI = np.meshgrid(tx, ty)
+                ZI = griddata(coords, data1, (XI, YI), method='linear')
+                ZI2 = griddata(coords, data2, (XI, YI), method='linear')
+                tree = KDTree(coords)
+                dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+                dist = dist.reshape(XI.shape)
+                ZI[dist > cutoff_dist] = np.nan
+                ZI2[dist > cutoff_dist] = np.nan
+                return [tx, ty, ZI, ZI2]
+            else:
+                raise ValueError('Too many dofs')
+
+        else:
+            # Elementwise
+            tri_els=self.model.mesh.eltypes[2]
+            coords=np.zeros([len(tri_els),2])
+            data=np.zeros(len(tri_els))
+            if type(getattr(self.model.mesh.elements[tri_els[0]],target))==float or type(getattr(self.model.mesh.elements[tri_els[0]],target))==np.float64:
+                for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    data[i]=getattr(self.model.mesh.elements[element],target)
+            elif type(getattr(self.model.mesh.elements[tri_els[0]],target))==list:
+                 for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    data[i]=getattr(self.model.mesh.elements[element],target)[0][1]
+            else:
+                for i,element in enumerate(tri_els):
+                    coords[i,:]=self.model.mesh.elements[element].cent
+                    try:
+                        data[i]=getattr(self.model.mesh.elements[element],target)(element.cent)
+                    except:
+                        raise RuntimeError('Problems with parsing function for plotting')
+
+        # The generic 1d stuff
+        tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
+        ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
+        XI, YI = np.meshgrid(tx, ty)
+        ZI = griddata(coords, data, (XI, YI), method='linear')
+        tree = KDTree(coords)
+        dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
+        dist = dist.reshape(XI.shape)
+        ZI[dist > cutoff_dist] = np.nan
+        return [tx, ty, ZI]
 
 
 class TimeDependentModel:
@@ -1615,7 +1703,7 @@ if __name__ == '__main__':
 
     @do_cprofile
     def upwinding():
-        import equationsFEM
+        import equations
         """test upwinding"""
         class k:
             def __init__(self,vel,k_old,alpha):
@@ -1632,7 +1720,7 @@ if __name__ == '__main__':
         k_up=k(vel,k_old,alpha)
 
         admo=Model('524_project/testmesh.msh')
-        admo.add_equation(equationsFEM.advectionDiffusion())
+        admo.add_equation(equations.advectionDiffusion())
         admo.add_BC('dirichlet',1,lambda x: 15.0)
         admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
         admo.add_BC( 'dirichlet',3,lambda x: 5.0)
