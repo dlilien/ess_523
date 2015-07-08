@@ -8,7 +8,7 @@
 # Distributed under terms of the MIT license.
 
 """
-These are a bunch (hopefully) of equations that the FEM code can solve, and the base class for these equations
+These are a few equations that the FEM code can solve, and the base class for these equations
 """
 
 import numpy as np
@@ -65,6 +65,8 @@ class diffusion(Equation):
     def __init__(self):
         self.lin=True
         self.dofs=1
+        self.BCs={}
+        self.ICs=None
     def __call__(self,node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
         """Let's solve the diffusion equation"""
         if 'k' in kwargs:
@@ -94,6 +96,8 @@ class advectionDiffusion(Equation):
     def __init__(self):
         self.lin=True
         self.dofs=1
+        self.BCs={}
+        self.ICs=None
     def __call__(self,node1,node2,elements,max_nei=8,rhs=False,**kwargs):
         """Solve the advection-diffusion equation
         
@@ -165,6 +169,8 @@ class shallowShelf(Equation):
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
         self.lin=False
         self.dofs=2
+        self.BCs={}
+        self.ICs=None
         if not type(g)==float:
             raise TypeError('Gravity must be a float')
         self.g=g
@@ -280,3 +286,26 @@ class shallowShelf(Equation):
 
         # return if rhs is false
         return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3])
+
+class ssaAdjointBeta(Equation):
+    """This is to solve the adjoint equation w.r.t. beta for the SSA
+
+    The shallowShelf class is set up with a beta^2 formulation, so I follow that here
+
+    Parameters
+    ----------
+    guess : function,optional
+       A guess at beta for which to start. 0 everywhere if none.
+    """
+
+    def __init__(self,beta=lambda x: 0.0):
+        self.lin=True
+        self.dofs=1
+        self.beta=beta
+        self.BCs={}
+        self.ICs=None
+
+    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
+        pass
+
+

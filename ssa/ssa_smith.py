@@ -37,7 +37,10 @@ def main():
     thick=Raster('tiffs/smoothed_combination.tif','tiffs/ZBgeo.tif',subtract=True,ndv={0:'<0.0',1:'<-4.0e4'})
 
     # inverted beta
-    beta=Raster('tiffs/beta.tif')
+    #beta=Raster('tiffs/beta.tif')
+    beta = lambda x: 0.0
+
+
     # surface temperature
     temp=Raster('tiffs/temperature.tif')
     # basic viscosity class

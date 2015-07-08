@@ -528,8 +528,7 @@ class Model:
             else:
                 raise TypeError('Mesh input not understood')
             self.mesh.CreateBases()
-        self.eqn=None
-        self.BCs={}
+        self.eqn=[]
 
         # Do a bunch of rigamarole to allow a couple kwargs for linearity
         if 'td' in kwargs:
@@ -571,7 +570,7 @@ class Model:
                 raise TypeError('Need equation of type equations.Equation')
         except AttributeError:
             raise TypeError('Need equation of type equations.Equation')
-        self.eqn=eqn
+        self.eqn.append(eqn)
         self.dofs=eqn.dofs
         if eqn.lin:
             self.linear=True
@@ -580,7 +579,7 @@ class Model:
         return None
 
 
-    def add_BC(self,cond_type,target_edge,function):
+    def add_BC(self,cond_type,target_edge,function,eqn=0):
         """Assign a boundary condition (has some tests)
         
         Parameters
