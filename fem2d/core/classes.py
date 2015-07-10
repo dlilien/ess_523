@@ -486,7 +486,7 @@ class Mesh:
 
 
 class Model:
-    """A model, with associated mesh, BCs, and equations
+    """A model, with associated mesh, and equations
     
     Parameters
     ----------
@@ -506,10 +506,8 @@ class Model:
         Points to the associated mesh
     dofs : int
         The number of degrees of freedom in the equation to solve. e.g. 2 for 2D velocity
-    eqn : :py:class:`equations.Equation`
-        The equation to solve, should be attached using :py:meth:`add_equation`
-    BCs : dictionary
-        The associated boundary conditions, should be attached using :py:meth:`add_BC` 
+    eqn : list of :py:class:`equations.Equation`
+        The equations to solve, should be attached using :py:meth:`add_equation`
     """
     def __init__(self,*mesh,**kwargs):
         if mesh:
@@ -571,11 +569,6 @@ class Model:
         except AttributeError:
             raise TypeError('Need equation of type equations.Equation')
         self.eqn.append(eqn)
-        self.dofs=eqn.dofs
-        if eqn.lin:
-            self.linear=True
-        else:
-            self.linear=False
         return None
 
 
@@ -611,21 +604,35 @@ class Model:
                 except:
                     raise TypeError('Not a usable function, must take vector input and time')
 
-        self.BCs[target_edge]=(cond_type,function)
+        self.eqn[eqn].BCs[target_edge]=(cond_type,function)
 
 
-    def makeIterate(self):
-        """Prepare to solve.
+    def makeIterate(self,num=None):
+        """Prepare to solve. Multi purpose, if num is given returns the nth equation (0 based index)
+
+        Parameters
+        ----------
+        num : int,optional
+           If not None, return an iterate of the num'th equation
 
         Returns
         -------
-        model : LinearModel or NonLinearModel
-           Determined by whether or not the model is linear
+        model : LinearModel or NonLinearModel or Multimodel
+           Determined by linearity and number of equations
         """
-        if self.linear:
-            return LinearModel(self,dofs=self.eqn.dofs)
+
+        if num is not None:
+            if self.eqn[num].lin:
+                return LinearModel(self,eqn_num=num)
+            else:
+                return NonLinearModel(self,eqn_num=num)
+        elif len(self.eqn)==1:
+            if self.eqn[0].lin:
+                return LinearModel(self)
+            else:
+                return NonLinearModel(self)
         else:
-            return NonLinearModel(self,dofs=self.eqn.dofs)
+            return MultiModel(self)
 
 
 class ModelIterate:
@@ -643,6 +650,8 @@ class ModelIterate:
        -----------------
        dofs : int,optional
            Number of degrees of freedom. Default to that associated with the equation
+       eqn_num : int,optional
+           The number of the equation to solve if there are multiple, if eqn is not given.
        """
 
 
@@ -653,18 +662,13 @@ class ModelIterate:
         if eqn:
             self.eqn=eqn[0]
         else:
-            self.eqn=self.parent.eqn
-        if 'DOFs' in kwargs:
-            self.dofs=kwargs['DOFs']
-        elif 'dofs' in kwargs:
-            self.dofs=kwargs['dofs']
-        else:
-            self.dofs=1
-        if not type(self.dofs)==int:
-            raise TypeError('Degrees of freedom must be an integer')
+            if 'eqn_num' in kwargs:
+                self.eqn=self.parent.eqn[kwargs['eqn_num']]
+            else:
+                self.eqn=self.parent.eqn[0]
 
 
-    def MakeMatrixEQ(self,max_nei=12,**kwargs):
+    def MakeMatrixEQ(self,**kwargs):
         """Make the matrix form, max_nei is the most neighbors/element
         
         Parameters
@@ -684,9 +688,9 @@ class ModelIterate:
             # The easy version, scalar variable to solve for
 
             # Empty vectors to make the sparse matrix
-            rows=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
-            cols=np.zeros(max_nei*self.mesh.numnodes,dtype=np.int16)
-            data=np.zeros(max_nei*self.mesh.numnodes)
+            rows=np.zeros(self.eqn.max_nei*self.mesh.numnodes,dtype=np.int16)
+            cols=np.zeros(self.eqn.max_nei*self.mesh.numnodes,dtype=np.int16)
+            data=np.zeros(self.eqn.max_nei*self.mesh.numnodes)
 
             # zero vector for the rhs
             rhs=np.zeros(self.mesh.numnodes)
@@ -699,14 +703,14 @@ class ModelIterate:
                 # Do the diagonal element
                 rows[nnz]=i-1 
                 cols[nnz]=i-1
-                data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,**kwargs)
+                data[nnz],rhs[i-1]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],rhs=True,**kwargs)
                 nnz += 1
 
                 for j,node2_els in node1.neighbors.items():
                     # Do the off diagonals, do not assume symmetry
                     rows[nnz]=i-1
                     cols[nnz]=j-1
-                    data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,**kwargs)
+                    data[nnz]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],**kwargs)
                     nnz += 1
 
             # store what we have done
@@ -718,7 +722,7 @@ class ModelIterate:
             # Set things up so we can do velocity
 
             # Empty vectors to accept the sparse info, make them large for cross terms
-            malloc=max_nei*self.mesh.numnodes*self.dofs**2
+            malloc=self.eqn.max_nei*self.mesh.numnodes*self.dofs**2
             m=self.mesh.numnodes*self.dofs
 
             rows=np.zeros(malloc,dtype=np.int16)
@@ -751,7 +755,7 @@ class ModelIterate:
                 cols[nnz+3]=2*(i-1)
 
                 # Lazy, no checking for correct return from equation but so it goes
-                data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],max_nei=max_nei,rhs=True,**kwargs)
+                data[nnz],data[nnz+1],data[nnz+2],data[nnz+3],rhs[i-1],rhs[i]=self.eqn(i,i,[(elm[0],self.mesh.elements[elm[0]]) for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes==2],rhs=True,**kwargs)
                 
                 # increment things
                 nnz += 4
@@ -776,7 +780,7 @@ class ModelIterate:
                     cols[nnz+3]=2*(j-1)
 
                     # Again, we hope the return from this equation is good, dumb things are happening with i,j in the supplement, so these don't match
-                    data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],max_nei=max_nei,**kwargs)
+                    data[nnz],data[nnz+1],data[nnz+2],data[nnz+3]=self.eqn(i,j,[(nei_el,self.mesh.elements[nei_el]) for nei_el in node2_els if self.mesh.elements[nei_el].eltypes==2],**kwargs)
 
                     # increment again
                     nnz += 4
@@ -800,7 +804,7 @@ class ModelIterate:
         normal : bool,optional
            Specifies if the flux is normal for a Neumann condition. Defaults to True.
         """
-        BCs=self.parent.BCs
+        BCs=self.eqn.BCs
         Mesh=self.mesh
         dirichlet=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='dirichlet']
         neumann=[edgeval[0] for edgeval in BCs.items() if edgeval[1][0]=='neumann']
@@ -972,19 +976,9 @@ class ModelIterate:
             raise ValueError('Cannot do more than 2 dofs')
 
 
-    def solveIt(self,method='BiCGStab',precond='LU',tolerance=1.0e-5):
+    def solveIt(self):
         """Solve the matrix equation
 
-        Parameters
-        ----------
-        method : string,optional
-           Must be one of CG, BiCGStab, GMRES, and direct. Default is BiCGStab
-        precond : string or LinearOperator,optional
-           Can be LU, or you can feed the matrix preconditioner object, or it can 
-           be None. Defaults to LU.
-        tolerance : float
-           Convergence tolerance of the iterative method. Defaults to 1.0e-5
-           
         Returns
         -------
         self.sol : array
@@ -992,42 +986,42 @@ class ModelIterate:
         """
 
 
-        if not method=='direct':
-            if precond=='LU':
+        if not self.eqn.method=='direct':
+            if self.eqn.precond=='LU':
                 p=spilu(self.matrix, drop_tol=1.0e-5)
                 M_x=lambda x: p.solve(x)
                 M=LinearOperator((self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs),M_x)
-            elif precond is not None:
-                M=precond
-        if method=='CG':
-            if precond is not None:
-                self.sol,info=cg(self.matrix,self.rhs,tol=tolerance,M=M)
+            elif self.eqn.precond is not None:
+                M=self.eqn.precond
+        if self.eqn.method=='CG':
+            if self.eqn.precond is not None:
+                self.sol,info=cg(self.matrix,self.rhs,tol=self.eqn.lin_tolerance,M=M)
             else:
-                self.sol,info=cg(self.matrix,self.rhs,tol=tolerance)
+                self.sol,info=cg(self.matrix,self.rhs,tol=self.eqn.lin_tolerance)
             if info>0:
                 warn('Conjugate gradient did not converge. Attempting BiCGStab')
-                if precond is not None:
-                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance,M=M)
+                if self.eqn.precond is not None:
+                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=self.eqn.lin_tolerance,M=M)
                 else:
-                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
+                    self.sol,info=bicgstab(self.matrix,self.rhs,tol=self.eqn.lin_tolerance)
                 if info>0:
                     raise ConvergenceError(method='CG and BiCGStab',iters=info)
-        elif method=='BiCGStab':
-            if precond is not None:
-                self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance,M=M)
+        elif self.eqn.method=='BiCGStab':
+            if self.eqn.precond is not None:
+                self.sol,info=bicgstab(self.matrix,self.rhs,tol=self.eqn.lin_tolerance,M=M)
             else:
-                self.sol,info=bicgstab(self.matrix,self.rhs,tol=tolerance)
+                self.sol,info=bicgstab(self.matrix,self.rhs,tol=self.eqn.lin_tolerance)
             if info>0:
-                raise ConvergenceError(method=method,iters=info)
-        elif method=='direct':
+                raise ConvergenceError(method=self.eqn.method,iters=info)
+        elif self.eqn.method=='direct':
             self.sol=spsolve(self.matrix,self.rhs)
-        elif method=='GMRES':
-            if precond is not None:
-                self.sol,info=gmres(self.matrix,self.rhs,tol=tolerance,M=M)
+        elif self.eqn.method=='GMRES':
+            if self.eqn.precond is not None:
+                self.sol,info=gmres(self.matrix,self.rhs,tol=self.eqn.lin_tolerance,M=M)
             else:
-                self.sol,info=gmres(self.matrix,self.rhs,tol=tolerance)
+                self.sol,info=gmres(self.matrix,self.rhs,tol=self.eqn.lin_tolerance)
             if info>0:
-                raise ConvergenceError(method=method,iters=info)
+                raise ConvergenceError(method=self.eqn.method,iters=info)
         else:
             raise TypeError('Unknown solution method')
         return self.sol
@@ -1163,8 +1157,8 @@ class LinearModel(ModelIterate):
     """A Linear Model Iterate"""
     # Basically the same as a model iterate, add a method to solve things
     kind='Linear'
-    def iterate(self,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=12,time=None,**kwargs):
-        self.MakeMatrixEQ(max_nei=max_nei,**kwargs)
+    def iterate(self,time=None,**kwargs):
+        self.MakeMatrixEQ(max_nei=self.eqn.max_nei,**kwargs)
         self.applyBCs(time=time)
         if time is not None:
             if 'BDF1' in kwargs:
@@ -1174,7 +1168,7 @@ class LinearModel(ModelIterate):
                 self.matrix=self.matrix-diags()
             else:
                 raise ValueError('Cannot do that timestepping stategy')
-        sol=self.solveIt(method='BiCGStab',precond='LU',tolerance=1.0e-5)
+        sol=self.solveIt()
         return sol
 
 
@@ -1193,12 +1187,11 @@ class NonLinearModel:
 
     kind='NonLinear'
 
-    def __init__(self,model,dofs=1):
+    def __init__(self,model,eqn_num=0):
         self.model=model
-        self.dofs=dofs
-
+        self.eqn=model.eqn[eqn_num]
     
-    def iterate(self,gradient,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',tolerance=1.0e-5,max_nei=16,time=None,abort_not_converged=False,**kwargs):
+    def iterate(self,gradient,time=None,abort_not_converged=False,**kwargs):
         """
         The method for performing the solution to the nonlinear model iterate
 
@@ -1206,22 +1199,6 @@ class NonLinearModel:
         ----------
         gradient : function
            This gets called at every iteration in order to update parameters used in the equation being solved
-        relaxation : float,optional
-           The amount to relax. Use less than 1 if you have convergence problems. Defaults to 1.0.
-        nl_tolerance : float,optional
-           When to declare things converged
-        guess : array,optional
-           An initial guess at the solution. If None, use all zeros. Defaults to None.
-        nl_maxiter : int,optional
-           Maximum number of nonlinear iterations. Defaults to 50.
-        method : string,optional
-           Solution method to use for the linear system. Defaults to BiCGStab. Done using :py:meth:`ModelIterate.solveIt`.
-        precond : string,optional
-           Preconditioning method for the linear system if solved iteratively. Defaults to ILU. Can also be a LinearOperator which does the solving using a preconditioning matrix or matrices.
-        tolerance : float,optional
-           Linear system convergence tolerance for iterative methods. Defaults to 1.0e-5
-        max_nei : int,optional
-           Maximum number of neighboring elements times dofs. Err large. Defaults to 16.
         time : float,optional
            The time in a time dependent model. None for steady state. Defaults to None.
         abort_not_converged : bool,optional
@@ -1237,19 +1214,19 @@ class NonLinearModel:
         """
 
         # Make an initial guess at the velocities. Let's just use 0s by default
-        if guess is not None:
-            old=guess
+        if self.eqn.guess is not None:
+            old=self.eqn.guess
         else:
             old=np.zeros(self.model.mesh.numnodes*self.dofs)
 
         try:
-            for i in range(nl_maxiter):
+            for i in range(self.eqn.nl_maxiter):
                 # Loop until we have converged to within the desired tolerance
                 print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
                 kwargs['gradient']=gradient(self,old)
 
                 self.linMod=LinearModel(self.model,dofs=self.dofs)
-                new=self.linMod.iterate(method=method,precond=precond,tolerance=tolerance,max_nei=max_nei,time=time,**kwargs)
+                new=self.linMod.iterate(method=self.eqn.method,precond=self.eqn.precond,tolerance=self.eqn.lin_tolerance,max_nei=self.eqn.max_nei,time=time,**kwargs)
                 if np.linalg.norm(new)>1.0e-15:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                 else:
@@ -1257,9 +1234,9 @@ class NonLinearModel:
                 print('Relative Change: {:f}'.format(relchange))
 
                 #Check if we converged
-                if relchange<nl_tolerance and i != 0:
+                if relchange<self.eqn.nl_tolerance and i != 0:
                     break
-                old[:]=relaxation*new+(1.0-relaxation)*old
+                old[:]=self.eqn.relaxation*new+(1.0-self.eqn.relaxation)*old
             else: # Executed if we never break b/c of convergence
                 if abort_not_converged:
                     raise ConvergenceError('Nonlinear solver failed within iteration count')
@@ -1463,6 +1440,72 @@ class NonLinearModel:
         dist = dist.reshape(XI.shape)
         ZI[dist > cutoff_dist] = np.nan
         return [tx, ty, ZI]
+
+
+class MultiModel:
+    """A class for solving models with multiple equations associated. Leave the other guys alone for now.
+
+    """
+    kind='NonLinear'
+
+    def __init__(self,model):
+        self.model=model
+
+    def iterate(self,gradient,ss_maxiter=50,time=None,abort_not_converged=False,**kwargs):
+        """
+        The method for performing the solution to the nonlinear model iterate
+
+        Parameters
+        ----------
+        gradient : list of functions
+           This gets called at every iteration in order to update parameters used in the equation being solved. Put in dummies (None) for linear eqns.
+        ss_maxiter : int
+           Maximum number of steady-state iterations. Default 50.
+        time : float,optional
+           The time in a time dependent model. None for steady state. Defaults to None.
+        abort_not_converged : bool,optional
+           If true, raise a :py:exc:`ConvergenceError` if non-linear iterations do not converge. Otherwise call it good enough. Defaults to False.
+        
+        Any Any keyword arguments are passed down to the equation we are solving, for example time dependent terms like sources or conductivity can be specified.
+
+        Returns
+        -------
+        solution : list of arrays
+           The solutions to the nonlinear Equations
+
+        """
+        if not len(gradient)==len(self.model.eqn):
+            raise IndexError('len(eqns) must match len(gradient). Put in dummies for linear equations.')
+
+        # Make a container to hold the solutions
+        # We are going to have slots for every equation, even if some are linear
+        self.sol=[np.zeros(self.model.mesh.numnodes*eqn.dofs) for eqn in self.model.eqn]
+        relchange=[1.0 for eqn in self.model.eqn]
+        ss_relchange=relchange[:]
+        self.models=[self.model.makeIterate(num=j) for j in range(len(self.model.eqn))]
+
+        for k in range(0,ss_maxiter):
+            for j,model in enumerate(self.models):
+                if eqn[j].lin:
+                    print('Linear iterate for ',eqn.name)
+                    new=self.models[j].iterate(time=time,**kwargs)
+                else:
+                    new=self.models[j].iterate(gradient[j],time=time,**kwargs)
+                    self.eqn[j].guess=new.copy()
+                if k != 0:
+                    ss_relchange[j]=np.linalg.norm(self.sol[j]-new)/np.sqrt(float(self.model.mesh.numnodes))
+                    self.sol[j]=new.copy()
+                print(eqn.name,'Steady State change',ss_relchange[j])
+            if np.all([ss_relchange[j]<eqn.ss_tolerance for j,eqn in enumerate(self.model.eqn)]) and k !=0:
+                print('Steady State convergence reached at iteration',str(k+1))
+                break
+            print('Steady State iteration',str(k+1),'completed')
+        else:
+            if abort_not_converged:
+                raise ConvergenceError('Steady state solver failed within iteration count')
+            else:
+                print('Steady state solver did not converge within desired tolerance, returning')
+        return self.sol
 
 
 class TimeDependentModel:
@@ -1685,7 +1728,7 @@ def main():
 
 
 if __name__ == '__main__':
-    #main()
+    main()
     import cProfile
 
     def do_cprofile(func):

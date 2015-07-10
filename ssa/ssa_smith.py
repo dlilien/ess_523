@@ -57,7 +57,7 @@ def main():
     surfaceSlope(model.mesh,thick.spline)
 
     # Add some equation properties to the model
-    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick))
+    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm)
@@ -77,7 +77,7 @@ def main():
 
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
-    nlmodel.iterate(nus,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG')
+    nlmodel.iterate(nus)
 
 
     nlmodel.plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)

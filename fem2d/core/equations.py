@@ -16,64 +16,109 @@ import numpy as np
 class Equation:
     """Class for equations. Really just make a callable function API.
 
-    Besides the attributes which follow, every equation must be callable. The :py:meth:`__call__` method must take four positional arguments (which are probably needed for any finite element solution) and should probably also accept one keyword arguments which are generally needed. Additional arguments can be passed as kwargs. The parent mesh can be accessed via :py:attr:`Element.parent`. The required/suggested arguments, and required returns are:
-
     Parameters
     ----------
-    node1 : int
-       The number of the node corresponding to the basis function
-    node2 : int
-       The number of the node corresponding to the weight/test function
-    elements : list
-       A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
-    rhs : bool
-       If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
-    max_nei : int,optional 
-       The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
+    relaxation : float,optional
+       The amount to relax. Use less than 1 if you have convergence problems. Defaults to 1.0.
+    ss_maxiter : int,optional
+       The maximum number of steady state iterations allowed. Default 50.
+    ss_tolerance : float, optional
+       The tolerance in steady state for each equation. Default 1.0e-3.
+    nl_tolerance : float,optional
+       When to declare things converged
+    guess : array,optional
+       An initial guess at the solution. If None, use all zeros. Defaults to None.
+    nl_maxiter : int,optional
+       Maximum number of nonlinear iterations. Defaults to 50.
+    method : list of strings,optional
+       Solution method to use for the linear system. Defaults to BiCGStab. Done using :py:meth:`classes.ModelIterate.solveIt`.
+    precond : string,optional
+       Preconditioning method for the linear system if solved iteratively. Defaults to ILU. Can also be a LinearOperator which does the solving using a preconditioning matrix or matrices.
+    lin_tolerance : float,optional
+       Linear system convergence tolerance for iterative methods. Defaults to 1.0e-5.
+    max_nei : int,optional
+       Maximum number of neighboring elements times dofs. Err large. Defaults to 16.
 
-    Returns
-    -------
-    integrals : if 1D, 4-tuple if 2D
-       In 1D return the coefficient for the node1, node2 coefficient of the FEM matrix. In 2D, return the ((z1,z1),(z2,z2),(z1,z2),(z2,z1)) coefficients for node1,node2.
-    rhs : if 1D, 2-tuple if 2D
-       Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
-    
-    Attributes
-    ----------
-    lin : bool
-       True if the equation is linear and false otherwise. Should be overridden by subclass.
-    dofs : int
-       The number of degrees of freedom of the variable for which we are solving. Is 1 unless overridden.
-    """
+
+        Attributes
+        ----------
+        lin : bool
+           True if the equation is linear and false otherwise. Should be overridden by subclass.
+        dofs : int
+           The number of degrees of freedom of the variable for which we are solving. Is 1 unless overridden.
+        BCs : dictionary
+            The associated boundary conditions, should be attached using :py:meth:`add_BC`
+        ICs : function
+            Needed for time dependent simluations
+        """
     # equations must override lin to be boolean and have a call method
-    def __init__(self):
-        self.lin=None
-        self.dofs=1
+    def __init__(self,dofs=1,lin=None,ss_tolerance=1.0e-3,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',lin_tolerance=1.0e-5,max_nei=16):
+        self.dofs=dofs
+        self.lin=lin
+        self.ss_tolerance=ss_tolerance
+        self.relaxation=relaxation
+        self.nl_tolerance=nl_tolerance
+        self.guess=guess
+        self.nl_maxiter=nl_maxiter
+        self.method=method
+        self.precond=precond
+        self.lin_tolerance=lin_tolerance
+        self.max_nei=16
+        self.BCs={}
+        self.IC=None
+
+    def __call__(self,node1,node2,rhs=False):
+        pass
+        """
+        Find the entry for the matrix to solve
+
+        The :py:meth:`__call__` method must take four positional arguments (which are probably needed for any finite element solution) and should probably also accept one keyword arguments which are generally needed.
+        Additional arguments can be passed as kwargs. The parent mesh can be accessed via :py:attr:`Element.parent`.
+        The required/suggested arguments, and required returns are:
+        
+        Parameters
+        ----------
+        node1 : int
+           The number of the node corresponding to the basis function
+        node2 : int
+           The number of the node corresponding to the weight/test function
+        elements : list
+           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
+        rhs : bool
+           If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
+
+        Returns
+        -------
+        integrals : if 1D, 4-tuple if 2D
+           In 1D return the coefficient for the node1, node2 coefficient of the FEM matrix. In 2D, return the ((z1,z1),(z2,z2),(z1,z2),(z2,z1)) coefficients for node1,node2.
+        rhs : if 1D, 2-tuple if 2D
+           Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
+        """
 
 
 class area(Equation):
     
-    def __init__(self):
-        self.lin=True
-        self.dofs=1
+    def __init__(self,**kwargs):
+        super().__init__(**kwargs)
+
+        
     def __call__(self,node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
         """This is really just for testing. Calculate area"""
         return np.sum([elm[1].area for elm in elements])
 
 
 class diffusion(Equation):
-    def __init__(self):
-        self.lin=True
-        self.dofs=1
-        self.BCs={}
-        self.ICs=None
-    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,kwargs={}):
+    def __init__(self,**kwargs):
+        super().__init__(lin=True,dofs=1,**kwargs)
+        self.name='Diffusion'
+        
+    def __call__(self,node1,node2,elements,rhs=False,**kwargs):
         """Let's solve the diffusion equation"""
         if 'k' in kwargs:
             k=kwargs['k']
         else:
             k=lambda x:1.0
-        ints=np.zeros((max_nei,))
+        ints=np.zeros((self.max_nei,))
         for i,elm in enumerate(elements):
             n1b=elm[1].nodes.index(node1)
             n2b=elm[1].nodes.index(node2)
@@ -83,7 +128,7 @@ class diffusion(Equation):
                 f=kwargs['f']
             else:
                 f=lambda x:0.0
-            ints_rhs=np.zeros((max_nei,))
+            ints_rhs=np.zeros((self.max_nei,))
             for i,elm in enumerate(elements):
                 ints_rhs[i]=elm[1].area*np.sum([gp[0]*elm[1].bases[n1b](elm[1].F(gp[1:]))*f(elm[1].F(gp[1:])) for gp in elm[1].gpoints])
             return np.sum(ints),np.sum(ints_rhs)
@@ -93,12 +138,13 @@ class diffusion(Equation):
 
 class advectionDiffusion(Equation):
     """ Defines the advection-diffusion equation"""
-    def __init__(self):
-        self.lin=True
-        self.dofs=1
-        self.BCs={}
-        self.ICs=None
-    def __call__(self,node1,node2,elements,max_nei=8,rhs=False,**kwargs):
+
+
+    def __init__(self,**kwargs):
+        super().__init__(lin=True,dofs=1,**kwargs)
+        self.name='Advection-Diffusion'
+
+    def __call__(self,node1,node2,elements,rhs=False,**kwargs):
         """Solve the advection-diffusion equation
         
         Keyword Arguments
@@ -126,7 +172,7 @@ class advectionDiffusion(Equation):
         else:
             raise RuntimeError('You cannot have advection/diffusion without giving me a velocity. Use diffusion')
 
-        ints=np.zeros((max_nei,))
+        ints=np.zeros((self.max_nei,))
         for i,elm in enumerate(elements):
             n1b=elm[1].nodes.index(node1)
             n2b=elm[1].nodes.index(node2)
@@ -137,7 +183,7 @@ class advectionDiffusion(Equation):
                 f=kwargs['f']
             else:
                 f=lambda x:0.0
-            ints_rhs=np.zeros((max_nei,))
+            ints_rhs=np.zeros((self.max_nei,))
             for i,elm in enumerate(elements):
                 ints_rhs[i]=elm[1].area*np.sum([gp[0]*elm[1].bases[n1b](elm[1].F(gp[1:]))*f(elm[1].F(gp[1:])) for gp in elm[1].gpoints])
             return np.sum(ints),np.sum(ints_rhs)
@@ -167,10 +213,8 @@ class shallowShelf(Equation):
     def __init__( self, b, g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
-        self.lin=False
-        self.dofs=2
-        self.BCs={}
-        self.ICs=None
+        super().__init__(dofs=2,lin=False,**kwargs)
+        self.name='Shallow Shelf'
         if not type(g)==float:
             raise TypeError('Gravity must be a float')
         self.g=g
@@ -192,7 +236,7 @@ class shallowShelf(Equation):
             self.thickness=None 
 
 
-    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
+    def __call__(self,node1,node2,elements,rhs=False,**kwargs):
         """Attempt to solve the shallow-shelf approximation.
 
 
@@ -238,7 +282,7 @@ class shallowShelf(Equation):
 
 
         # We are going to have 4 returns for the lhs, so set up a sport to receive this info
-        ints=np.zeros((max_nei,4))
+        ints=np.zeros((self.max_nei,4))
 
         # Now loop through the neighboring elements
         for i,elm in enumerate(elements):
@@ -274,7 +318,7 @@ class shallowShelf(Equation):
 
         if rhs:
             # TODO the integrals, check for more parameters?
-            ints_rhs=np.zeros((max_nei,2))
+            ints_rhs=np.zeros((self.max_nei,2))
             for i,elm in enumerate(elements):
                 # 1st SSA eqn (d/dx) rhs
                 ints_rhs[i,0]=self.rho*self.g*elm[1].h*elm[1].dzs[0]*elm[1].area
@@ -287,6 +331,7 @@ class shallowShelf(Equation):
         # return if rhs is false
         return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3])
 
+
 class ssaAdjointBeta(Equation):
     """This is to solve the adjoint equation w.r.t. beta for the SSA
 
@@ -298,12 +343,9 @@ class ssaAdjointBeta(Equation):
        A guess at beta for which to start. 0 everywhere if none.
     """
 
-    def __init__(self,beta=lambda x: 0.0):
-        self.lin=True
-        self.dofs=1
-        self.beta=beta
-        self.BCs={}
-        self.ICs=None
+    def __init__(self,beta=lambda x: 0.0,**kwargs):
+        super().__init__(**kwargs)
+        self.name='Shallow Shelf Adjoint'
 
     def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
         pass
