@@ -52,7 +52,7 @@ class Equation:
             Needed for time dependent simluations
         """
     # equations must override lin to be boolean and have a call method
-    def __init__(self,dofs=1,lin=None,ss_tolerance=1.0e-3,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',lin_tolerance=1.0e-5,max_nei=16):
+    def __init__(self,dofs=1,lin=True,ss_tolerance=1.0e-3,relaxation=1.0,nl_tolerance=1.0e-5,guess=None,nl_maxiter=50,method='BiCGStab',precond='LU',lin_tolerance=1.0e-5,max_nei=16):
         self.dofs=dofs
         self.lin=lin
         self.ss_tolerance=ss_tolerance
@@ -94,6 +94,23 @@ class Equation:
         rhs : if 1D, 2-tuple if 2D
            Only should be called on the diagonal, so return the node1-th rhs value in 1D.  Should be a 2-tuple of the two components in 2D.
         """
+
+
+class dummy(Equation):
+    """Dummy equation for simple debugging."""
+    
+    def __init__(self,**kwargs):
+        super().__init__(**kwargs)
+        self.name='Dummy'
+
+    def __call__(self,node1,node2,elements,rhs=False,**kwargs):
+        """ Dummy return. If not rhs, returns 1.0. Else returns 1.0,1.0."""
+        if rhs:
+            return 1.0,1.0
+        else:
+            return 1.0
+
+
 
 
 class area(Equation):
