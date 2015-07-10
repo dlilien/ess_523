@@ -165,10 +165,6 @@ class advectionDiffusion(Equation):
 
         if 'v' in kwargs:
             v=kwargs['v']
-        elif 'u' in kwargs:
-            v=kwargs['u']
-        elif 'V' in kwargs:
-            v=kwargs['V']
         else:
             raise RuntimeError('You cannot have advection/diffusion without giving me a velocity. Use diffusion')
 
@@ -212,7 +208,18 @@ class shallowShelf(Equation):
 
     def __init__( self, b, g=9.8,rho=917.0,**kwargs):
         """Need to set the dofs"""
-        # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)
+        # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)     
+        if 'h' in kwargs:
+            self.thickness=None
+            self.h=kwargs['h']
+            del kwargs['h']
+        elif 'thickness' in kwargs:
+            self.thickness = kwargs['thickness']
+            del kwargs['thickness']
+            self.h=None
+        else:
+            self.h=None
+            self.thickness=None 
         super().__init__(dofs=2,lin=False,**kwargs)
         self.name='Shallow Shelf'
         if not type(g)==float:
@@ -221,19 +228,8 @@ class shallowShelf(Equation):
         if not type(rho)==float:
             raise TypeError('Density of ice must be a float')
         self.rho=rho
-
-        # Some optional parameters:
         self.b = b
-     
-        if 'h' in kwargs:
-            self.thickness=None
-            self.h=kwargs['h']
-        elif 'thickness' in kwargs:
-            self.thickness = kwargs['thickness']
-            self.h=None
-        else:
-            self.h=None
-            self.thickness=None 
+
 
 
     def __call__(self,node1,node2,elements,rhs=False,**kwargs):

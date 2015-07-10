@@ -684,7 +684,7 @@ class ModelIterate:
         #cdef np.ndarray[cINT32, ndim=1] row, col
         #cdef np.ndarray[cDOUBLE, ndim=1] data,rhs
 
-        if self.dofs==1:
+        if self.eqn.dofs==1:
             # The easy version, scalar variable to solve for
 
             # Empty vectors to make the sparse matrix
@@ -718,12 +718,12 @@ class ModelIterate:
             self.rhs=rhs
             return None
 
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
             # Set things up so we can do velocity
 
             # Empty vectors to accept the sparse info, make them large for cross terms
-            malloc=self.eqn.max_nei*self.mesh.numnodes*self.dofs**2
-            m=self.mesh.numnodes*self.dofs
+            malloc=self.eqn.max_nei*self.mesh.numnodes*self.eqn.dofs**2
+            m=self.mesh.numnodes*self.eqn.dofs
 
             rows=np.zeros(malloc,dtype=np.int16)
             cols=np.zeros(malloc,dtype=np.int16)
@@ -866,7 +866,7 @@ class ModelIterate:
 
     def _applyNeumann(self,edge_nodes,function,normal=True,flux=True,time=None): #TODO make non-normal stuff, non-flux  possible
         """Apply a natural boundary condition, must be normal"""
-        if self.dofs==1:
+        if self.eqn.dofs==1:
             for node in edge_nodes:
                 for j,els in self.mesh.nodes[node].neighbors.items():
                     if j in edge_nodes:
@@ -885,7 +885,7 @@ class ModelIterate:
                                     else:
                                         self.rhs[node-1] = self.rhs[node-1]- np.sum([self.mesh.elements[el].length*gpt[0]*(np.dot(function(self.mesh.elements[el].F(gpt[1:-1])),self.elements[el].normal))*self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
              for node in edge_nodes:
                 for j,els in self.mesh.nodes[node].neighbors.items():
                     if j in edge_nodes:
@@ -916,7 +916,7 @@ class ModelIterate:
 
     def _applyDirichlet(self,edge_nodes,function,time=None):
         """Let's apply an essential boundary condition"""
-        if self.dofs==1:
+        if self.eqn.dofs==1:
             for node in edge_nodes:
                 self.matrix[node-1,node-1]=1.0
                 if time is not None:
@@ -929,7 +929,7 @@ class ModelIterate:
                         self.rhs[j-1]=self.rhs[j-1]-self.matrix[j-1,node-1]*self.rhs[node-1]
                     self.matrix[node-1,j-1]=0.0
                     self.matrix[j-1,node-1]=0.0   
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
             for node in edge_nodes:
                 # We now have 4 terms relating to this element itself
                 self.matrix[2*(node-1),2*(node-1)]=1.0
@@ -990,7 +990,7 @@ class ModelIterate:
             if self.eqn.precond=='LU':
                 p=spilu(self.matrix, drop_tol=1.0e-5)
                 M_x=lambda x: p.solve(x)
-                M=LinearOperator((self.mesh.numnodes*self.dofs,self.mesh.numnodes*self.dofs),M_x)
+                M=LinearOperator((self.mesh.numnodes*self.eqn.dofs,self.mesh.numnodes*self.eqn.dofs),M_x)
             elif self.eqn.precond is not None:
                 M=self.eqn.precond
         if self.eqn.method=='CG':
@@ -1061,7 +1061,7 @@ class ModelIterate:
         """
 
 
-        if self.dofs==1:
+        if self.eqn.dofs==1:
             mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
                 self.matsol=mat_sol
@@ -1078,11 +1078,11 @@ class ModelIterate:
                 plt.show()
             return mat_sol
 
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
 
             # Do a quick check before we do the slow steps
             if savefig is not None:
-                if not len(savefig)==self.dofs:
+                if not len(savefig)==self.eqn.dofs:
                     raise ValueError('savefig must be of strings same length as dofs')
 
             mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
@@ -1125,7 +1125,7 @@ class ModelIterate:
            If the mesh is concave, supply this number to exclude pixels greater than this distance from node.
         """
         coords=self.mesh.coords
-        if self.dofs==1:
+        if self.eqn.dofs==1:
             data=self.sol
             tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
             ty = np.linspace(np.min(coords[:,1]), np.max(coords[:,1]), y_steps)
@@ -1137,7 +1137,7 @@ class ModelIterate:
             ZI[dist > cutoff_dist] = np.nan
             return [tx, ty, ZI]
 
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
             data1=self.sol[::2]
             data2=self.sol[1::2]
             tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
@@ -1217,7 +1217,7 @@ class NonLinearModel:
         if self.eqn.guess is not None:
             old=self.eqn.guess
         else:
-            old=np.zeros(self.model.mesh.numnodes*self.dofs)
+            old=np.zeros(self.model.mesh.numnodes*self.eqn.dofs)
 
         try:
             for i in range(self.eqn.nl_maxiter):
@@ -1225,8 +1225,8 @@ class NonLinearModel:
                 print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
                 kwargs['gradient']=gradient(self,old)
 
-                self.linMod=LinearModel(self.model,dofs=self.dofs)
-                new=self.linMod.iterate(method=self.eqn.method,precond=self.eqn.precond,tolerance=self.eqn.lin_tolerance,max_nei=self.eqn.max_nei,time=time,**kwargs)
+                self.linMod=LinearModel(self.model,dofs=self.eqn.dofs)
+                new=self.linMod.iterate(time=time,**kwargs)
                 if np.linalg.norm(new)>1.0e-15:
                     relchange=np.linalg.norm(new-old)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                 else:
@@ -1293,7 +1293,7 @@ class NonLinearModel:
                         raise RuntimeError('Problems with parsing function for plotting')
 
 
-        if self.dofs==1 or target is not None:
+        if self.eqn.dofs==1 or target is not None:
             mat_sol=self.sparse2mat(target=target,nodewise=nodewise,x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
             if savesol:
                 self.matsol=mat_sol
@@ -1312,12 +1312,12 @@ class NonLinearModel:
                 plt.show()
             return mat_sol
 
-        elif self.dofs==2:
+        elif self.eqn.dofs==2:
 
             # Do a quick check before we do the slow steps
             if savefig is not None:
                 if not vel:
-                    if not len(savefig)==self.dofs:
+                    if not len(savefig)==self.eqn.dofs:
                         raise ValueError('savefig must be of strings same length as dofs')
 
             mat_sol=self.sparse2mat(x_steps=x_steps,y_steps=y_steps,cutoff_dist=cutoff)
@@ -1392,7 +1392,7 @@ class NonLinearModel:
                             raise AttributeError('Neither model nor nodes has desired variable')
 
 
-            elif self.dofs==2:
+            elif self.eqn.dofs==2:
                 data1=self.sol[::2]
                 data2=self.sol[1::2]
                 tx = np.linspace(np.min(np.array(coords[:,0])), np.max(np.array(coords[:,0])), x_steps)
