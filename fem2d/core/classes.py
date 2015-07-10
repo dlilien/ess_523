@@ -1190,7 +1190,8 @@ class NonLinearModel:
     def __init__(self,model,eqn_num=0):
         self.model=model
         self.eqn=model.eqn[eqn_num]
-    
+
+
     def iterate(self,gradient,time=None,abort_not_converged=False,**kwargs):
         """
         The method for performing the solution to the nonlinear model iterate
@@ -1222,7 +1223,7 @@ class NonLinearModel:
         try:
             for i in range(self.eqn.nl_maxiter):
                 # Loop until we have converged to within the desired tolerance
-                print( 'Nonlinear iterate {:d}:    '.format(i) , end=' ')
+                print( self.eqn.name,'Nonlinear iterate {:d}:    '.format(i) , end=' ')
                 kwargs['gradient']=gradient(self,old)
 
                 self.linMod=LinearModel(self.model,dofs=self.eqn.dofs)
@@ -1236,7 +1237,7 @@ class NonLinearModel:
                 #Check if we converged
                 if relchange<self.eqn.nl_tolerance and i != 0:
                     break
-                old[:]=self.eqn.relaxation*new+(1.0-self.eqn.relaxation)*old
+                old=self.eqn.relaxation*new[:]+(1.0-self.eqn.relaxation)*old[:]
             else: # Executed if we never break b/c of convergence
                 if abort_not_converged:
                     raise ConvergenceError('Nonlinear solver failed within iteration count')
@@ -1486,16 +1487,17 @@ class MultiModel:
 
         for k in range(0,ss_maxiter):
             for j,model in enumerate(self.models):
-                if eqn[j].lin:
-                    print('Linear iterate for ',eqn.name)
-                    new=self.models[j].iterate(time=time,**kwargs)
+                if self.model.eqn[j].lin:
+                    print('SS iteration',str(k+1),'for linear',self.model.eqn[j].name)
+                    new=model.iterate(time=time,**kwargs)
                 else:
-                    new=self.models[j].iterate(gradient[j],time=time,**kwargs)
-                    self.eqn[j].guess=new.copy()
+                    print('SS iteration',str(k+1),'for nonlinear',self.model.eqn[j].name)
+                    new=model.iterate(gradient[j],time=time,**kwargs)
+                    self.model.eqn[j].guess=new.copy()
                 if k != 0:
-                    ss_relchange[j]=np.linalg.norm(self.sol[j]-new)/np.sqrt(float(self.model.mesh.numnodes))
+                    ss_relchange[j]=np.linalg.norm(self.sol[j]-new)/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new)
                     self.sol[j]=new.copy()
-                print(eqn.name,'Steady State change',ss_relchange[j])
+                print(self.model.eqn[j].name,'Steady State change',ss_relchange[j])
             if np.all([ss_relchange[j]<eqn.ss_tolerance for j,eqn in enumerate(self.model.eqn)]) and k !=0:
                 print('Steady State convergence reached at iteration',str(k+1))
                 break
