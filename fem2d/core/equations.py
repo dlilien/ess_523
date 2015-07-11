@@ -111,8 +111,6 @@ class dummy(Equation):
             return 1.0
 
 
-
-
 class area(Equation):
     
     def __init__(self,**kwargs):

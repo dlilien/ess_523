@@ -63,8 +63,6 @@ import numpy as np
 Axes3D # Avoid the warning
 
 
-
-
 class Node:
     curr_id = 0
 
@@ -1514,7 +1512,7 @@ class TimeDependentModel:
     """A time dependent model"""
 
 
-    def __init__(self,model,timestep,n_steps,initial_condition,method='BDF1',lin_method='BiCGStab',precond='LU',lin_tolerance=1.0e-5):
+    def __init__(self,model,timestep,n_steps,method='BDF1'):
         """We are doing this as a class to organize the results, but init does all computation"""
         if not type(model)==Model:
             raise TypeError('Model must be of class Model')
@@ -1527,17 +1525,6 @@ class TimeDependentModel:
         if not n_steps>0:
             raise ValueError('Number of timesteps must be strictly greater than 0')
         self.n_steps=n_steps
-        if not lin_method in ['BiCGStab','GMRES','direct','CG']:
-            raise ValueError('Not a supported linear solver')
-        self.lin_method=lin_method
-        if not precond in ['LU', None]:
-            raise ValueError('Not a supported procondtioner')
-        self.precond=precond
-        if not type(lin_tolerance)==float:
-            raise TypeError('Tolerance must be a float')
-        self.lin_tolerance=lin_tolerance
-        self.ic=initial_condition
-        self.method=method
         self.sol=self.iterate()
 
 
@@ -1552,30 +1539,20 @@ class TimeDependentModel:
         Returns
         -------
         solution : list
-           A of arrays of the node-wise solution at each timestep. The first entry is the initial condition.
+           A of arrays of the node-wise solution for each equation at each timestep. The first entry is the initial condition. I.e. if you query sol[i][j][k] you get the solution at the ith timestep, jth equation, kth node.
         """
-        sol=[np.array([self.ic(pt) for pt in self.model.mesh.coords])]
-        if self.model.eqn.lin:
-            iterate=LinearModel
-        else:
-            iterate=NonLinearModel
+        sol=[[np.array([eqn.IC(pt) for pt in self.model.mesh.coords]) for eqn in self.model.eqn]]
         if self.method=='BDF2':
             time=self.timestep
-            equation=self.model.eqn
-            model_iterate=iterate(self.model,equation)
-            sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
+            sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
             for i in range(2,self.n_steps):
                 time=i*self.timestep
-                equation=self.model.eqn
-                model_iterate=iterate(self.model,equation)
-                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,timestep=self.timestep))
+                sol.append(self.model.makeIterate().iterate(time=time,timestep=self.timestep))
         elif self.method=='BDF1':
             for i in range(1,(self.n_steps+1)):
                 time=i*self.timestep
                 print('Timestep {:d}, real time {:f}'.format(i,time))
-                equation=self.model.eqn
-                model_iterate=iterate(self.model,equation)
-                sol.append(model_iterate.iterate(method=self.lin_method,precond=self.precond,tolerance=self.lin_tolerance,time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
+                sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
         else:
             raise ValueError('Not a supported timestepping method. Use BDF2.')
         return sol
@@ -1693,89 +1670,3 @@ class ConvergenceError(Exception):
     def __str__(self):
         return 'Method '+self.method+' did not converge at iteration '+str(self.iters)
 
-
-def main():
-    import equations
-    mo=Model('524_project/testmesh.msh')
-    mo.add_equation(equations.diffusion())
-    mo.add_BC('dirichlet',1,lambda x: 10.0)
-    mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
-    mo.add_BC( 'dirichlet',3,lambda x: abs(x[1]-5.0)+5.0)
-    mo.add_BC('neumann',4,lambda x:0.0)
-    m=LinearModel(mo)
-    m.iterate()
-
-
-    admo=Model('524_project/testmesh.msh')
-    admo.add_equation(equations.advectionDiffusion())
-    admo.add_BC('dirichlet',1,lambda x: 15.0)
-    admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
-    admo.add_BC( 'dirichlet',3,lambda x: 5.0)
-    admo.add_BC('neumann',4,lambda x:0.0)
-    am=LinearModel(admo)
-    am.iterate(v=lambda x:np.array([1.0,0.0]))
-
-    mod=Model('524_project/testmesh.msh',td=True)
-    mod.add_equation(equations.diffusion())
-    mod.add_BC('dirichlet',1,lambda x,t: 26.0)
-    mod.add_BC('neumann',2,lambda x,t:0.0) # 'dirichlet',2,lambda x: 10.0)
-    mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
-    mod.add_BC('neumann',4,lambda x,t:0.0)
-    #mi=TimeDependentModel(mod,10.0,2,lambda x:1+(x[0]-5)**2)
-    #mi.animate(show=False,save='decay.mp4')
-    return am #m,am,mi
-
-    
-    
-
-
-if __name__ == '__main__':
-    main()
-    import cProfile
-
-    def do_cprofile(func):
-        def profiled_func(*args, **kwargs):
-            profile = cProfile.Profile()
-            try:
-                profile.enable()
-                result = func(*args, **kwargs)
-                profile.disable()
-                return result
-            finally:
-                profile.print_stats()
-        return profiled_func
-
-    @do_cprofile
-    def upwinding():
-        import equations
-        """test upwinding"""
-        class k:
-            def __init__(self,vel,k_old,alpha):
-                self.vel=vel
-                self.k=k_old
-                self.alpha=alpha
-            def __call__(self,pt):
-                v=self.vel(pt)
-                return self.k(pt)+self.alpha*0.5/2.0*np.outer(v,v)/max(1.0e-8,np.linalg.norm(v))
-
-        alpha=3.0
-        k_old=lambda x:np.array([[1.0, 0.0],[0.0, 1.0]])
-        vel=lambda x: np.array([1000.0,0.0])
-        k_up=k(vel,k_old,alpha)
-
-        admo=Model('524_project/testmesh.msh')
-        admo.add_equation(equations.advectionDiffusion())
-        admo.add_BC('dirichlet',1,lambda x: 15.0)
-        admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)
-        admo.add_BC( 'dirichlet',3,lambda x: 5.0)
-        admo.add_BC('neumann',4,lambda x:0.0)
-        am=LinearModel(admo)
-        am.iterate(v=vel,k=k_up)
-        #am.plotSolution(savefig='figs/upwinded.eps',show=True)
-        am.plotSolution()
-        plt.title('v=1000, upwinded')
-        plt.savefig('figs/upwinded1000.eps')
-
-
-
-    upwinding()
