@@ -31,7 +31,7 @@ class Equation:
     nl_maxiter : int,optional
        Maximum number of nonlinear iterations. Defaults to 50.
     method : list of strings,optional
-       Solution method to use for the linear system. Defaults to BiCGStab. Done using :py:meth:`classes.ModelIterate.solveIt`.
+       Solution method to use for the linear system. Defaults to BiCGStab. Done using :py:meth:`modeling.ModelIterate.solveIt`.
     precond : string,optional
        Preconditioning method for the linear system if solved iteratively. Defaults to ILU. Can also be a LinearOperator which does the solving using a preconditioning matrix or matrices.
     lin_tolerance : float,optional
@@ -84,7 +84,7 @@ class Equation:
         node2 : int
            The number of the node corresponding to the weight/test function
         elements : list
-           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
+           A of elements, as 2-tuples of (element_number,:py:class:`meshes.Element`), which are shared in common between the two nodes. This is only triangular elements. Linear elements are dealt with by the boundary condition methods of the solver
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
 
@@ -261,7 +261,7 @@ class shallowShelf(Equation):
         node2 : int
            The number of the node corresponding to the weight/test function
         elements : list
-           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+           A of elements, as 2-tuples of (element_number,:py:class:`meshes.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
         max_nei : int,optional 
@@ -387,7 +387,7 @@ class ssaAdjointBeta(Equation):
         node2 : int
            The number of the node corresponding to the weight/test function
         elements : list
-           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+           A of elements, as 2-tuples of (element_number,:py:class:`meshes.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
         max_nei : int,optional 

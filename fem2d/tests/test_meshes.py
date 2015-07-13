@@ -12,8 +12,7 @@ General tests for core/classes.py
 
 import numpy as np
 import unittest
-from fem2d.core.classes import Model,TimeDependentModel,LinearModel
-from fem2d.core.equations import diffusion
+from fem2d.core import Model,TimeDependentModel,LinearModel,diffusion
 from os import path
 
 

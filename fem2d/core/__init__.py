@@ -11,4 +11,4 @@ The main utilities for import
 """
 
 from .equations import *
-from .classes import *
+from .modeling import *

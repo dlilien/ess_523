@@ -12,8 +12,7 @@ unittests on each equation
 
 import numpy as np
 import unittest
-from fem2d.core.classes import Model,LinearModel
-from fem2d.core.equations import *
+from fem2d.core import Model,LinearModel,diffusion,advectionDiffusion
 from os import path
 
 

@@ -9,7 +9,7 @@
 """
 Some routines for use with matrices and geotiffs, oriented for use with elmer and qgis
 """
-import gdal
+import osgeo.gdal as gdal
 import osr
 import numpy as np
 import os
