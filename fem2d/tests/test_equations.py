@@ -12,14 +12,14 @@ unittests on each equation
 
 import numpy as np
 import unittest
-from ..core.classes import Model,LinearModel
-from ..core.equations import *
+from fem2d.core.classes import Model,LinearModel
+from fem2d.core.equations import *
 from os import path
 
 
 class TestEqautions(unittest.TestCase):
     def test_diffusion(self):
-        mo=Model(path.join(path.split(__file__)[0],'testmesh.msh'))
+        mo=Model(path.join(path.split(__file__)[0],'test_lib/testmesh.msh'))
         mo.add_equation(diffusion())
         mo.add_BC('dirichlet',1,lambda x: 10.0)
         mo.add_BC('neumann',2,lambda x:-1.0) # 'dirichlet',2,lambda x: 10.0)
@@ -30,7 +30,7 @@ class TestEqautions(unittest.TestCase):
         self.assertTrue(True)
 
     def test_advection_diffusion(self):
-        admo=Model(path.join(path.split(__file__)[0],'testmesh.msh'))
+        admo=Model(path.join(path.split(__file__)[0],'test_lib/testmesh.msh'))
         admo.add_equation(advectionDiffusion())
         admo.add_BC('dirichlet',1,lambda x: 15.0)
         admo.add_BC('neumann',2,lambda x:0.0) # 'dirichlet',2,lambda x: 10.0)

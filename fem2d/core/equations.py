@@ -67,6 +67,7 @@ class Equation:
         self.BCs={}
         self.IC=None
 
+
     def __call__(self,node1,node2,rhs=False):
         pass
         """

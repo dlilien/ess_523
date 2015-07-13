@@ -605,6 +605,36 @@ class Model:
         self.eqn[eqn].BCs[target_edge]=(cond_type,function)
 
 
+    def add_IC(self,function,eqn=0):
+        """Associate an initial condition with an equation.
+
+        Parameters
+        ----------
+        function : function
+           The formula for the initial condition.
+        eqn : int,optional
+           The equation number with which to associate this IC. Default is 0.
+
+        Raises
+        ------
+        ValueError if the model is steady state
+        TypeError if the function is not callable on a coordinate input
+        """
+
+        if not self.time_dep:
+            raise ValueError('Initial condition cannot apply to steady state model')
+        try:
+            function(self.mesh.nodes[1].coords())
+        except TypeError:
+            raise TypeError('Function must accept x,y coordinate as input')
+
+        self.eqn[eqn].IC=function
+
+
+
+
+
+
     def makeIterate(self,num=None):
         """Prepare to solve. Multi purpose, if num is given returns the nth equation (0 based index)
 
@@ -612,7 +642,7 @@ class Model:
         ----------
         num : int,optional
            If not None, return an iterate of the num'th equation
-
+        
         Returns
         -------
         model : LinearModel or NonLinearModel or Multimodel
@@ -1161,7 +1191,7 @@ class LinearModel(ModelIterate):
         if time is not None:
             if 'BDF1' in kwargs:
                 self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
-                self.rhs=kwargs['timestep']*self.rhs+kwargs['prev']
+                self.rhs=kwargs['timestep']*self.rhs+np.array(kwargs['td_sol'][0]).ravel()
             elif 'BDF2' in kwargs:
                 self.matrix=self.matrix-diags()
             else:
@@ -1525,6 +1555,7 @@ class TimeDependentModel:
         if not n_steps>0:
             raise ValueError('Number of timesteps must be strictly greater than 0')
         self.n_steps=n_steps
+        self.method=method
         self.sol=self.iterate()
 
 
@@ -1544,15 +1575,15 @@ class TimeDependentModel:
         sol=[[np.array([eqn.IC(pt) for pt in self.model.mesh.coords]) for eqn in self.model.eqn]]
         if self.method=='BDF2':
             time=self.timestep
-            sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
+            sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,td_soln=sol))
             for i in range(2,self.n_steps):
                 time=i*self.timestep
-                sol.append(self.model.makeIterate().iterate(time=time,timestep=self.timestep))
+                sol.append(self.model.makeIterate().iterate(time=time,timestep=self.timestep,td_sol=sol))
         elif self.method=='BDF1':
             for i in range(1,(self.n_steps+1)):
                 time=i*self.timestep
                 print('Timestep {:d}, real time {:f}'.format(i,time))
-                sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,prev=sol[-1]))
+                sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,td_sol=sol))
         else:
             raise ValueError('Not a supported timestepping method. Use BDF2.')
         return sol
@@ -1605,7 +1636,7 @@ class TimeDependentModel:
         ax=p3.Axes3D(fig)
         ax.set_xlim3d([min(self.model.mesh.coords[:,0]),max(self.model.mesh.coords[:,0])])
         ax.set_ylim3d([min(self.model.mesh.coords[:,1]),max(self.model.mesh.coords[:,1])])
-        ax.set_zlim3d([0.9*min(self.sol[0]),1.1*max(self.sol[0])])
+        #ax.set_zlim3d([0.9*min(self.sol[0]),1.1*max(self.sol[0])])
         class nextPlot:
             def __init__(self,outer):
                 self.iterate=0
@@ -1615,7 +1646,7 @@ class TimeDependentModel:
                 ax.clear()
                 ax.set_xlim3d([min(self.outer.model.mesh.coords[:,0]),max(self.outer.model.mesh.coords[:,0])])
                 ax.set_ylim3d([min(self.outer.model.mesh.coords[:,1]),max(self.outer.model.mesh.coords[:,1])])
-                ax.set_zlim3d([0.9*min(self.outer.sol[0]),1.1*max(self.outer.sol[0])])
+                #ax.set_zlim3d([0.9*min(self.outer.sol[0]),1.1*max(self.outer.sol[0])])
                 return ax.plot_trisurf(self.outer.model.mesh.coords[:,0],self.outer.model.mesh.coords[:,1],Z=self.outer.sol[self.iterate-1],cmap=cm.jet)
         np=nextPlot(self)
         an=mpl_an.FuncAnimation(fig, np, self.n_steps-1, interval=5000, blit=False)

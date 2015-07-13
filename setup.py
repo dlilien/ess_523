@@ -10,7 +10,7 @@
 Some information, and compile the cython code
 """
 
-from distutils.core import setup
+from setuptools import setup
 
 setup( name='fem2d',
       version='0.1a1',
@@ -19,5 +19,6 @@ setup( name='fem2d',
       author='David Lilien',
       author_email='dal22@uw.edu',
       license='MIT',
-      packages=['fem2d','fem2d.core','fem2d.lib']
+      packages=['fem2d','fem2d.core','fem2d.lib'],
+      test_suite = 'nose.collector'
       )
