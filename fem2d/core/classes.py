@@ -252,6 +252,7 @@ class TriangElement(Element):
         self.nodes = nodes
         self.kind = TriangElement.kind
         self.eltypes = TriangElement.eltypes
+        self.phys_vars = {}
         for tag, val in list(skwargs.items()):
             setattr(self, tag, val)
         ps=self.xyvecs()
@@ -332,6 +333,7 @@ class LineElement(Element):
         self.nodes = nodes
         self.kind = LineElement.kind
         self.eltypes = LineElement.eltypes
+        self.phys_vars={}
         self.F=None
         ps = self.xyvecs()
         self.cent=[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2]

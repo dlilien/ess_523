@@ -69,8 +69,8 @@ class nu:
                     element._af=getArrheniusFactor(np.sum([gpt[0]*self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
                 else:
                     element._af=self.B_0
-            element.nu=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate,units=self.units)
-        print('Average viscosity is {:e}'.format(float(np.average([elm.nu for elm in elements.values()]))),end=' ')
+            element.phys_vars['nu']=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate,units=self.units)
+        print('Average viscosity is {:e}'.format(float(np.average([elm.phys_vars['nu'] for elm in elements.values()]))),end=' ')
 
 
 def getArrheniusFactor(temp):
@@ -93,7 +93,6 @@ def getArrheniusFactor(temp):
         return np.exp(-115.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
     else:
         return np.exp(-115.0e3/8.314*(1.0/273.15))
-
 
 
 class lapse_tempDEM:
@@ -169,6 +168,7 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
             strainRate=critical_shear_rate
     return pref*strainRate**(-(n-1.0)/(2*n))/2.0
 
+
 def surfaceSlope(mesh,surface):
     """Calculate the surface slope on a mesh using nodal values and basis functions"""
     # note that this function could be repeatedly re-called for a time-dependent simulation
@@ -179,4 +179,4 @@ def surfaceSlope(mesh,surface):
 
     # associate a 2d slope with every mesh point
     for element in mesh.elements.values():
-        element.dzs=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)
+        element.phys_vars['dzs']=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)

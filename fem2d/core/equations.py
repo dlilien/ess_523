@@ -278,18 +278,18 @@ class shallowShelf(Equation):
         # need the thickness, called h or thickness
         # need gravity (not hard coded for unit flexibility) called g
         # need ice density (again not hard codes for unit flexibility) called rho
-        # need viscosity, call it nu or visc
+        # need viscosity, call it nu
 
         # Check for required inputs
-        if not np.all([hasattr(elm[1],'b') for elm in elements]):
+        if not np.all(['b' in elm[1].phys_vars for elm in elements]):
             for elm in elements:
-                elm[1].b=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
+                elm[1].phys_vars['b']=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
-        if not hasattr(elements[0][1],'dzs'):
+        if not 'dzs' in elements[0][1].phys_vars:
             raise AttributeError('No surface slope associated with mesh, need tuple/array')
 
 
-        if not hasattr(elements[0][1],'nu'):
+        if not 'nu' in elements[0][1].phys_vars:
             raise AttributeError('No element-wise viscosity associated with mesh')
 
 
@@ -308,34 +308,34 @@ class shallowShelf(Equation):
                 elm[1].h=2*np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in elm[1].gpts])
 
             # For first time through if constant thickness
-            if not hasattr(elm[1],'h'):
+            if not 'h' in elm[1].phys_vars:
                 if self.h is not None:
-                    elm[1].h=self.h
+                    elm[1].phys_vars['h']=self.h
                 elif self.thickness is not None:
                     for elm in elements:
-                        elm[1].h=2*np.sum([gp[0]*(self.thickness(gp[1])) for gp in elm[1].gpts])
+                        elm[1].phys_vars['h']=2*np.sum([gp[0]*(self.thickness(gp[1])) for gp in elm[1].gpts])
                 else:
                     raise AttributeError('No thickness found')
 
 
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
-            ints[i,0]=2*elm[1].area*(elm[1].b**2+elm[1].h*elm[1].nu*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
+            ints[i,0]=2*elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
             # 2,2
-            ints[i,1]=2*elm[1].area*(elm[1].b**2+elm[1].h*elm[1].nu*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
+            ints[i,1]=2*elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i,2]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*elm[1].h*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            ints[i,2]=2*elm[1].area*(elm[1].phys_vars['b']**2*(1.0+(n1b==n2b))/24.0+elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i,3]=2*elm[1].area*(elm[1].b**2*(1.0+(n1b==n2b))/24.0+elm[1].nu*elm[1].h*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+            ints[i,3]=2*elm[1].area*(elm[1].phys_vars['b']**2*(1.0+(n1b==n2b))/24.0+elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
 
         if rhs:
             # TODO the integrals, check for more parameters?
             ints_rhs=np.zeros((self.max_nei,2))
             for i,elm in enumerate(elements):
                 # 1st SSA eqn (d/dx) rhs
-                ints_rhs[i,0]=self.rho*self.g*elm[1].h*elm[1].dzs[0]*elm[1].area
+                ints_rhs[i,0]=self.rho*self.g*elm[1].phys_vars['h']*elm[1].phys_vars['dzs'][0]*elm[1].area
                 # 2nd SSA eqn (d/dy) rhs
-                ints_rhs[i,1]=self.rho*self.g*elm[1].h*elm[1].dzs[1]*elm[1].area
+                ints_rhs[i,1]=self.rho*self.g*elm[1].phys_vars['h']*elm[1].phys_vars['dzs'][1]*elm[1].area
             
             # return with rhs
             return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3]),np.sum(ints_rhs[:,0]),np.sum(ints_rhs[:,1])
