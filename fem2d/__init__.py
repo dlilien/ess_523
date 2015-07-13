@@ -11,6 +11,5 @@ Make it easy to get the fundamental utilities
 """
 
 # Get the most essential portions of the project
-
 from .core import *
-
+__all__=['core.classes','core.equations']

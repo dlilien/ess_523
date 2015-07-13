@@ -70,6 +70,8 @@ class nu:
                 else:
                     element._af=self.B_0
             element.phys_vars['nu']=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate,units=self.units)
+            element.phys_vars['u']=np.average([velocity[2*(number-1)] for index,number in enumerate(element.nodes)])
+            element.phys_vars['v']=np.average([velocity[2*number-1] for index,number in enumerate(element.nodes)])
         print('Average viscosity is {:e}'.format(float(np.average([elm.phys_vars['nu'] for elm in elements.values()]))),end=' ')
 
 

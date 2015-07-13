@@ -1307,19 +1307,19 @@ class NonLinearModel:
             tri_els=self.model.mesh.eltypes[2]
             coords=np.zeros([len(tri_els),2])
             sol=np.zeros(len(tri_els))
-            if type(getattr(self.model.mesh.elements[tri_els[0]],target))==float or type(getattr(self.model.mesh.elements[tri_els[0]],target))==np.float64:
+            if type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==float or type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==np.float64:
                 for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
-                    sol[i]=getattr(self.model.mesh.elements[element],target)
-            elif type(getattr(self.model.mesh.elements[tri_els[0]],target))==list:
+                    sol[i]=self.model.mesh.elements[element].phys_vars[target]
+            elif type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==list:
                  for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
-                    sol[i]=getattr(self.model.mesh.elements[element],target)[0][1]
+                    sol[i]=self.model.mesh.elements[element].phys_vars[target][0][1]
             else:
                 for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
                     try:
-                        sol[i]=getattr(self.model.mesh.elements[element],target)(element.cent)
+                        sol[i]=self.model.mesh.elements[element].phys_vars[target](element.cent)
                     except:
                         raise RuntimeError('Problems with parsing function for plotting')
 
@@ -1445,19 +1445,19 @@ class NonLinearModel:
             tri_els=self.model.mesh.eltypes[2]
             coords=np.zeros([len(tri_els),2])
             data=np.zeros(len(tri_els))
-            if type(getattr(self.model.mesh.elements[tri_els[0]],target))==float or type(getattr(self.model.mesh.elements[tri_els[0]],target))==np.float64:
+            if type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==float or type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==np.float64:
                 for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
-                    data[i]=getattr(self.model.mesh.elements[element],target)
-            elif type(getattr(self.model.mesh.elements[tri_els[0]],target))==list:
+                    data[i]=self.model.mesh.elements[element].phys_vars[target]
+            elif type(self.model.mesh.elements[tri_els[0]].phys_vars[target])==list:
                  for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
-                    data[i]=getattr(self.model.mesh.elements[element],target)[0][1]
+                    data[i]=self.model.mesh.elements[element].phys_vars[target][0][1]
             else:
                 for i,element in enumerate(tri_els):
                     coords[i,:]=self.model.mesh.elements[element].cent
                     try:
-                        data[i]=getattr(self.model.mesh.elements[element],target)(element.cent)
+                        data[i]=self.model.mesh.elements[element].phys_vars[target](element.cent)
                     except:
                         raise RuntimeError('Problems with parsing function for plotting')
 

@@ -320,13 +320,13 @@ class shallowShelf(Equation):
 
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
-            ints[i,0]=2*elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
+            ints[i,0]=elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
             # 2,2
-            ints[i,1]=2*elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
+            ints[i,1]=elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i,2]=2*elm[1].area*(elm[1].phys_vars['b']**2*(1.0+(n1b==n2b))/24.0+elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            ints[i,2]=elm[1].area*(elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i,3]=2*elm[1].area*(elm[1].phys_vars['b']**2*(1.0+(n1b==n2b))/24.0+elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+            ints[i,3]=elm[1].area*(elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
 
         if rhs:
             # TODO the integrals, check for more parameters?
@@ -356,10 +356,115 @@ class ssaAdjointBeta(Equation):
     """
 
     def __init__(self,beta=lambda x: 0.0,**kwargs):
-        super().__init__(**kwargs)
+        super().__init__(dofs=2,lin=True,**kwargs)
         self.name='Shallow Shelf Adjoint'
+        
+        # Even though this is the same equations as the SSA in some sense, it is linear because viscosity is independent of the Lagrange multipliers
+        
+        if 'h' in kwargs:
+            self.thickness=None
+            self.h=kwargs['h']
+            del kwargs['h']
+        elif 'thickness' in kwargs:
+            self.thickness = kwargs['thickness']
+            del kwargs['thickness']
+            self.h=None
+        else:
+            self.h=None
+            self.thickness=None 
 
-    def __call__(self,node1,node2,elements,max_nei=12,rhs=False,**kwargs):
-        pass
 
+    def __call__(self,node1,node2,elements,rhs=False,**kwargs):
+        """Attempt to solve adjoint of the shallow-shelf approximation.
+
+
+        The elements passed to this method must each have a property :py:attr:`dzs` which is a 2-vector which is the surface slope on that element. They also must have a function for viscosity, :py:attr:`nu` associated with them which is a scalar. Since both of these are not spatially variable within an element using piecewise linear basis functions, they should just be values not functions.
+
+        Parameters
+        ----------
+        node1 : int
+           The number of the node corresponding to the basis function
+        node2 : int
+           The number of the node corresponding to the weight/test function
+        elements : list
+           A of elements, as 2-tuples of (element_number,:py:class:`classesFEM.Element`), which are shared in common between the two nodes.
+        rhs : bool
+           If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
+        max_nei : int,optional 
+           The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
+
+        Keyword Arguments
+        -----------------
+        h : function
+           Required if thickness is not set. The ice thickness as a function of space. Should accept a 2-vector of x,y coordinates and return a float.
+        b : float
+           Required if not set when the equation instance is created. Square root of basal friction coefficient.
+        """
+        # We need basal friction in kwargs, call this b or beta
+        # need the thickness, called h or thickness
+        # need gravity (not hard coded for unit flexibility) called g
+        # need ice density (again not hard codes for unit flexibility) called rho
+        # need viscosity, call it nu
+
+        # Check for required inputs
+        if not np.all(['b' in elm[1].phys_vars for elm in elements]):
+            for elm in elements:
+                elm[1].phys_vars['b']=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
+
+        if not 'dzs' in elements[0][1].phys_vars:
+            raise AttributeError('No surface slope associated with mesh, need tuple/array')
+
+        if not 'nu' in elements[0][1].phys_vars:
+            raise AttributeError('No element-wise viscosity associated with mesh')
+
+        # We are going to have 4 returns for the lhs, so set up a sport to receive this info
+        ints=np.zeros((self.max_nei,4))
+
+        # Now loop through the neighboring elements
+        for i,elm in enumerate(elements):
+            n1b=elm[1].nodes.index(node1) 
+            # this should be the index of the weight/equation (j direction in the supplement)
+            n2b=elm[1].nodes.index(node2)
+            # this is the index of the basis function (i direction in the supplement)
+            
+            # thickness being passed gets precedence
+            if 'thickness' in kwargs:
+                elm[1].h=2*np.sum([gp[0]*(kwargs['thickness'](gp[1])) for gp in elm[1].gpts])
+
+            # For first time through if constant thickness
+            if not 'h' in elm[1].phys_vars:
+                if self.h is not None:
+                    elm[1].phys_vars['h']=self.h
+                elif self.thickness is not None:
+                    for elm in elements:
+                        elm[1].phys_vars['h']=2*np.sum([gp[0]*(self.thickness(gp[1])) for gp in elm[1].gpts])
+                else:
+                    raise AttributeError('No thickness found')
+
+
+            # indices based on a 2x2 submatrix of A for i,j
+            # 1,1
+            ints[i,0]=elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]))
+            # 2,2
+            ints[i,1]=elm[1].area*(elm[1].phys_vars['b']**2+elm[1].phys_vars['h']*elm[1].phys_vars['nu']*(4*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][0]))
+            # 1,2
+            ints[i,2]=elm[1].area*(elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]+elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]))
+            # 2,1
+            ints[i,3]=elm[1].area*(elm[1].phys_vars['nu']*elm[1].phys_vars['h']*(2*elm[1].dbases[n1b][1]*elm[1].dbases[n2b][0]+elm[1].dbases[n1b][0]*elm[1].dbases[n2b][1]))
+
+        if rhs:
+            # TODO the integrals, check for more parameters?
+            ints_rhs=np.zeros((self.max_nei,2))
+            for i,elm in enumerate(elements):
+                # 1st SSA eqn (d/dx) rhs
+                ints_rhs[i,0]=elm[1].phys_vars['u_d']-elm[1].phys_vars['u']
+                # 2nd SSA eqn (d/dy) rhs
+                ints_rhs[i,1]=elm[1].phys_vars['v_d']-elm[1].phys_vars['v']
+
+            
+            # return with rhs
+            return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3]),np.sum(ints_rhs[:,0]),np.sum(ints_rhs[:,1])
+
+        # return if rhs is false
+        return np.sum(ints[:,0]),np.sum(ints[:,1]),np.sum(ints[:,2]),np.sum(ints[:,3])
 

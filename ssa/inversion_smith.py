@@ -11,7 +11,7 @@ Try doing the shallow shelf approximation on Smith Glacier
 """
 
 import fem2d
-from fem2d.lib import Raster,nu,surfaceSlope
+from fem2d.lib import Raster,nu,surfaceSlope,rasterizeMesh
 
 # global constant for unit conversion
 yearInSeconds=365.25*24.0*60.0*60.0 # This will be convenient for units
@@ -71,13 +71,15 @@ def main():
     for shelf in [4,8]: # Crosson and Dotson respectively
         model.add_BC('dirichlet',shelf,vdm)
 
-    # Test things with the dummy equation
-    model.add_equation(fem2d.dummy())
+    model.add_equation(fem2d.ssaAdjointBeta())
     for edge in [2,4,6,8,10,38,60,81]:
-        model.add_BC('dirichlet',edge,lambda x:1.0,eqn=1)
+        model.add_BC('dirichlet',edge,lambda x:(0.0,0.0),eqn=1)
+
+    # Associate the measured velocities with the mesh
+    rasterizeMesh(model.mesh,vdm,['u_d','v_d'],elementwise=True)
     
     multimodel=model.makeIterate()
-    multimodel.iterate([nus, None])
+    multimodel.iterate([nus, None]) # Adjoint equation is linear
 
 
     multimodel.models[0].plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)

@@ -20,7 +20,7 @@ class Raster:
     
     Parameters
     ----------
-    *DEMs : string
+    *DEMs : list of strings
         The DEMs we should be acting upon
 
     Keyword Arguments
@@ -87,3 +87,38 @@ class Raster:
                 raise ValueError('Object has only 1 DEM associated')
         else:
             raise ValueError('Object does not have this many DEMs associated')
+
+
+def rasterizeMesh(mesh,raster,var_names,elementwise=True):
+    """Interpolate the raster onto the mesh
+
+    Parameters
+    ----------
+    mesh: py:`classes.Mesh`
+       The mesh to interpolate onto
+    raster: Raster
+       The raster which we are applying
+    varnames: list of strings
+       The names of the variables to put into phys_vars dictionaries
+    elementwise: bool,optional
+       Apply this to the elements. If false, apply nodewise. Default True.
+    """
+    if not len(var_names)==raster.splines:
+        raise ValueError('Number of variable names does not match number of splines')
+
+    if elementwise:
+        for elm in mesh.elements.values():
+            if elm.eltypes==2:
+                if raster.splines==1:
+                    elm.phys_vars[var_names[0]]=elm.area*2*np.sum([gp[0]*raster(gp[1]) for gp in elm.gpts])
+                else:
+                    elm.phys_vars[var_names[0]],elm.phys_vars[var_names[1]]=elm.area*2*np.sum(np.array([gp[0]*raster(gp[1]) for gp in elm.gpts]),0)
+
+    else:
+        for node in mesh.nodes.values():
+            if raster.splines==1:
+                node.phys_vars[var_names[0]]=raster(node.coords)
+            else:
+                node.phys_vars[var_names[0]],node.phys_vars[var_names[1]]=raster(node.coords)
+            
+               
