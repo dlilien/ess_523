@@ -150,7 +150,7 @@ class Model:
             raise TypeError('Need equation of type equations.Equation')
         if name is None:
             name=eqn.name
-        self.eqn.setitem(name,eqn,number=number,before_all=before_all,after_all=after_all)
+        self.eqn.setitem(name,eqn,number=number,before_all=before_all,after_all=after_all,diffEQ=True)
         return None
 
 
@@ -159,8 +159,8 @@ class Model:
 
         Parameters
         ----------
-        eqn : `equations.Equation`
-           Equation to solve
+        eqn : `equations.Function`
+           Function to call
         name : str,optional
            Name which will overwrite the equation name
 
@@ -170,7 +170,7 @@ class Model:
            If the equation is not of the proper type
         """
 
-        self.eqn.setitem(name,fnctn,number=number,before_all=before_all,after_all=after_all)
+        self.eqn.setitem(name,fnctn,number=number,before_all=before_all,after_all=after_all,diffEQ=False)
         return None
 
 
@@ -239,10 +239,6 @@ class Model:
             self.eqn[list(self.eqn.keys())[0]]=function
 
 
-
-
-
-
     def makeIterate(self,name=None):
         """Prepare to solve. Multi purpose, if num is given returns the nth equation (0 based index)
 
@@ -294,6 +290,8 @@ class eqnlist:
         self.mainDict={}
         self.keyPairs=[]
         self.numbers=[]
+        self.f_numbers=[]
+        self.de_numbers=[]
 
     def __getitem__(self,key):
         if type(key)==int:
@@ -307,7 +305,7 @@ class eqnlist:
     def __len__(self):
         return len(self.numbers)
 
-    def setitem(self,key,value,number=None,before_all=False,after_all=False):
+    def setitem(self,key,value,number=None,before_all=False,after_all=False,diffEQ=True):
         """Number overrides before/after all
 
         If no ordering info is supplied, the next largest number counting up from 0 is used.
@@ -337,6 +335,10 @@ class eqnlist:
         self.mainDict[key]=value
         self.keyPairs.append((number,key))
         self.numbers.append(number)
+        if diffEQ:
+            self.de_numbers.append(number)
+        else:
+            self.f_numbers.append(number)
 
     def items(self):
         return self.mainDict.items()
@@ -1198,25 +1200,28 @@ class MultiModel:
 
         # Make a container to hold the solutions
         # We are going to have slots for every equation, even if some are linear
-        self.sol={name:np.zeros(self.model.mesh.numnodes*eqn.dofs) for name,eqn in self.model.eqn.items()}
-        relchange={key:1.0 for key in self.model.eqn.mainDict}
+        self.sol={name:np.zeros(self.model.mesh.numnodes*eqn.dofs) for name,eqn in self.model.eqn.items() if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers}
+        relchange={name:1.0 for name in self.sol}
         ss_relchange=relchange.copy()
         self.models=OrderedDict([([name for eqnnum,name in self.model.eqn.keyPairs if eqnnum==num][0],self.model.makeIterate([name for eqnnum,name in self.model.eqn.keyPairs if eqnnum==num][0])) for num in sorted(self.model.eqn.numbers)])
 
         for k in range(0,ss_maxiter):
             for name,model in self.models.items():
-                if self.model.eqn[name].lin:
-                    print('SS iteration',str(k+1),'for linear',name)
-                    new=model.iterate(time=time,sol=self.sol,**kwargs)
+                if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers:
+                    if self.model.eqn[name].lin:
+                        print('SS iteration',str(k+1),'for linear',name)
+                        new=model.iterate(time=time,sol=self.sol,**kwargs)
+                    else:
+                        print('SS iteration',str(k+1),'for nonlinear',name)
+                        new=model.iterate(gradient[name],time=time,sol=self.sol,**kwargs)
+                        model.eqn.guess=new[name].copy()
+                    if k != 0:
+                        ss_relchange[name]=np.linalg.norm(self.sol[name]-new[name])/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new[name])
+                        self.sol[name]=new[name].copy()
+                    print(name,'Steady State change',ss_relchange[name])
                 else:
-                    print('SS iteration',str(k+1),'for nonlinear',name)
-                    new=model.iterate(gradient[name],time=time,sol=self.sol,**kwargs)
-                    model.eqn.guess=new[name].copy()
-                if k != 0:
-                    ss_relchange[name]=np.linalg.norm(self.sol[name]-new[name])/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new[name])
-                    self.sol[name]=new[name].copy()
-                print(name,'Steady State change',ss_relchange[name])
-            if np.all([ss_relchange[name]<eqn.ss_tolerance for name,eqn in self.model.eqn.items()]) and k !=0:
+                    model.iterate(sol=self.sol)
+            if np.all([ss_relchange[name]<eqn.ss_tolerance for name,eqn in self.model.eqn.items() if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers]) and k !=0:
                 print('Steady State convergence reached at iteration',str(k+1))
                 break
             print('Steady State iteration',str(k+1),'completed')
@@ -1262,7 +1267,7 @@ class TimeDependentModel:
         solution : list
            A of arrays of the node-wise solution for each equation at each timestep. The first entry is the initial condition. I.e. if you query sol[i][j][k] you get the solution at the ith timestep, jth equation, kth node.
         """
-        sol=[{name:np.array([eqn.IC(pt) for pt in self.model.mesh.coords]) for name,eqn in self.model.eqn.items()}]
+        sol=[{name:np.array([eqn.IC(pt) for pt in self.model.mesh.coords]) for name,eqn in self.model.eqn.items() if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers}]
         if self.method=='BDF2':
             time=self.timestep
             sol.append(self.model.makeIterate().iterate(time=time,BDF1=True,timestep=self.timestep,td_soln=sol))

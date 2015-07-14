@@ -11,6 +11,7 @@ Some functions for use with map view shallow shelf approximations
 """
 
 import numpy as np
+from ..core.equations import Function
 yearInSeconds=365.25*24.0*60.0*60.0
 
 class nu:
@@ -182,3 +183,8 @@ def surfaceSlope(mesh,surface):
     # associate a 2d slope with every mesh point
     for element in mesh.elements.values():
         element.phys_vars['dzs']=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)
+
+
+class OptimizeBeta(Function):
+    def __call__(self,mesh,model,solution):
+        pass

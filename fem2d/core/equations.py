@@ -113,6 +113,12 @@ class dummy(Equation):
             return 1.0
 
 
+class Function:
+    """ Essentially a dummy class for the function API for things like optimization methods for inversion
+    """
+    pass
+
+
 class area(Equation):
     
     def __init__(self,**kwargs):
