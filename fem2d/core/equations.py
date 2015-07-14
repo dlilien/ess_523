@@ -13,6 +13,7 @@ These are a few equations that the FEM code can solve, and the base class for th
 
 import numpy as np
 
+
 class Equation:
     """Class for equations. Really just make a callable function API.
 

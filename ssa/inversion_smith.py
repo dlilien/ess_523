@@ -82,8 +82,8 @@ def main():
     multimodel.iterate(gradient={'Shallow Shelf':nus}) # Adjoint equation is linear
 
 
-    multimodel.models[0].plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
-    multimodel.models[0].plotSolution(target='h',nodewise=False,show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    multimodel.models['Shallow Shelf'].plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    multimodel.models['Shallow Shelf'].plotSolution(target='h',nodewise=False,show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
     return multimodel
 
 

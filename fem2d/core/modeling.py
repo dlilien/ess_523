@@ -104,7 +104,7 @@ class Model:
             else:
                 raise TypeError('Mesh input not understood')
             self.mesh.CreateBases()
-        self.eqn=OrderedDict()
+        self.eqn=eqnlist()
 
         # Do a bunch of rigamarole to allow a couple kwargs for linearity
         if 'td' in kwargs:
@@ -127,7 +127,7 @@ class Model:
             self.time_dep=False
 
 
-    def add_equation(self,eqn,name=None):
+    def add_equation(self,eqn,name=None,number=None,before_all=False,after_all=False):
         """Add the equation to be solved
 
         Parameters
@@ -150,7 +150,27 @@ class Model:
             raise TypeError('Need equation of type equations.Equation')
         if name is None:
             name=eqn.name
-        self.eqn[name]=eqn
+        self.eqn.setitem(name,eqn,number=number,before_all=before_all,after_all=after_all)
+        return None
+
+
+    def add_function(self,fnctn,name='Dummy',number=None,before_all=False,after_all=False):
+        """Add a function to be called
+
+        Parameters
+        ----------
+        eqn : `equations.Equation`
+           Equation to solve
+        name : str,optional
+           Name which will overwrite the equation name
+
+        Raises
+        ------
+        TypeError
+           If the equation is not of the proper type
+        """
+
+        self.eqn.setitem(name,fnctn,number=number,before_all=before_all,after_all=after_all)
         return None
 
 
@@ -188,7 +208,7 @@ class Model:
         if eqn_name is not None:
             self.eqn[eqn_name].BCs[target_edge]=(cond_type,function)
         else:
-            self.eqn[list(self.eqn.keys())[0]].BCs[target_edge]=(cond_type,function)
+            self.eqn[self.eqn.numbers[0]].BCs[target_edge]=(cond_type,function)
 
 
     def add_IC(self,function,eqn_name=None):
@@ -236,12 +256,17 @@ class Model:
         model : LinearModel or NonLinearModel or Multimodel
            Determined by linearity and number of equations
         """
-
         if name is not None:
-            if self.eqn[name].lin:
-                return LinearModel(self,eqn_name=name)
-            else:
-                return NonLinearModel(self,eqn_name=name)
+            try:
+                if Equation in type(self.eqn[name]).__bases__:
+                    pass
+                if self.eqn[name].lin:
+                    return LinearModel(self,eqn_name=name)
+                else:
+                    return NonLinearModel(self,eqn_name=name)
+            except AttributeError:
+                return Dummy(self,f_name=name)
+
         elif len(self.eqn)==1:
             if list(self.eqn.values())[0].lin:
                 return LinearModel(self)
@@ -249,6 +274,76 @@ class Model:
                 return NonLinearModel(self)
         else:
             return MultiModel(self)
+
+
+class Dummy:
+    """Mimic the iterate method so we can use non-diffeq stuff"""
+    def __init__(self,model,f_name):
+        self.model=model
+        self.f_name=f_name
+        self.f=self.model.eqn[self.f_name]
+        self.eqn_name=f_name
+
+    def iterate(self,**kwargs):
+        self.f(self.model.mesh,self.model,kwargs['sol'])
+
+
+class eqnlist:
+    
+    def __init__(self):
+        self.mainDict={}
+        self.keyPairs=[]
+        self.numbers=[]
+
+    def __getitem__(self,key):
+        if type(key)==int:
+            try:
+                return self.mainDict[[keyname for keynum,keyname in self.keyPairs if keynum==key][0]]
+            except IndexError:
+                raise KeyError('Key number does not exist')
+        elif type(key)==str:
+            return self.mainDict[key]
+
+    def __len__(self):
+        return len(self.numbers)
+
+    def setitem(self,key,value,number=None,before_all=False,after_all=False):
+        """Number overrides before/after all
+
+        If no ordering info is supplied, the next largest number counting up from 0 is used.
+
+        Last entries in those categories claim precedence.
+        before_all entries are numbered with negative indices descending from -1.
+        after_all ascends from 1000.
+        """
+        if not type(key)==str:
+            raise TypeError('Key',key,'must be a string')
+        if number is not None:
+            if number in self.numbers:
+                raise AttributeError('Cannot overwrite existing equation number')
+        elif before_all:
+            number=-1
+            while number in self.numbers:
+                number-=1
+        elif after_all:
+            number=1000
+            while number in self.numbers:
+                number+=1
+        else:
+            if len(self.numbers)==0:
+                number = 0
+            else:
+                number=max(key for key in self.numbers if key<1000)+1
+        self.mainDict[key]=value
+        self.keyPairs.append((number,key))
+        self.numbers.append(number)
+
+    def items(self):
+        return self.mainDict.items()
+
+    def values(self):
+        return self.mainDict.values()
+
 
 
 class ModelIterate:
@@ -281,7 +376,7 @@ class ModelIterate:
             if 'eqn_name' in kwargs and (kwargs['eqn_name'] is not None):
                 self.eqn_name=kwargs['eqn_name']
             else:
-                self.eqn_name=list(self.parent.eqn.keys())[0]
+                self.eqn_name=[name for num,name in self.parent.eqn.keyPairs if num==self.parent.eqn.numbers[0]][0]
             self.eqn=self.parent.eqn[self.eqn_name]
 
 
@@ -780,7 +875,7 @@ class LinearModel(ModelIterate):
         if 'name' in kwargs:
             name = kwargs['name']
         else:
-            name = list(self.parent.eqn.keys())[0]
+            name = [name for num,name in self.parent.eqn.keyPairs if num==self.parent.eqn.numbers[0]][0]
         if time is not None:
             if 'BDF1' in kwargs:
                 self.matrix=kwargs['timestep']*self.matrix+diags(np.ones(self.mesh.numnodes),0)
@@ -1077,7 +1172,7 @@ class MultiModel:
     def __init__(self,model):
         self.model=model
 
-    def iterate(self,gradient,other_methods=[],ss_maxiter=50,time=None,abort_not_converged=False,**kwargs):
+    def iterate(self,gradient,ss_maxiter=50,time=None,abort_not_converged=False,**kwargs):
         """
         The method for performing the solution to the nonlinear model iterate
 
@@ -1085,8 +1180,6 @@ class MultiModel:
         ----------
         gradient : dictionary of functions
            This gets called at every iteration in order to update parameters used in the equation being solved.
-        other_methods=[] : list of functions,optional
-           These will be called after the differential equations to be solved. Format should be function(mesh,model,solution) with return ignored. Default is an empty list.
         ss_maxiter : int
            Maximum number of steady-state iterations. Default 50.
         time : float,optional
@@ -1106,24 +1199,23 @@ class MultiModel:
         # Make a container to hold the solutions
         # We are going to have slots for every equation, even if some are linear
         self.sol={name:np.zeros(self.model.mesh.numnodes*eqn.dofs) for name,eqn in self.model.eqn.items()}
-        relchange={key:1.0 for key in self.model.eqn.keys()}
+        relchange={key:1.0 for key in self.model.eqn.mainDict}
         ss_relchange=relchange.copy()
-        self.models=OrderedDict([(name,self.model.makeIterate(name)) for name in self.model.eqn.keys()])
+        self.models=OrderedDict([([name for eqnnum,name in self.model.eqn.keyPairs if eqnnum==num][0],self.model.makeIterate([name for eqnnum,name in self.model.eqn.keyPairs if eqnnum==num][0])) for num in sorted(self.model.eqn.numbers)])
 
         for k in range(0,ss_maxiter):
             for name,model in self.models.items():
                 if self.model.eqn[name].lin:
                     print('SS iteration',str(k+1),'for linear',name)
-                    new=model.iterate(time=time,**kwargs)
+                    new=model.iterate(time=time,sol=self.sol,**kwargs)
                 else:
                     print('SS iteration',str(k+1),'for nonlinear',name)
-                    new=model.iterate(gradient[name],time=time,**kwargs)
+                    new=model.iterate(gradient[name],time=time,sol=self.sol,**kwargs)
+                    model.eqn.guess=new[name].copy()
                 if k != 0:
                     ss_relchange[name]=np.linalg.norm(self.sol[name]-new[name])/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new[name])
                     self.sol[name]=new[name].copy()
                 print(name,'Steady State change',ss_relchange[name])
-            for j,method in enumerate(other_methods):
-                method(self.mesh,self.model,self.sol)
             if np.all([ss_relchange[name]<eqn.ss_tolerance for name,eqn in self.model.eqn.items()]) and k !=0:
                 print('Steady State convergence reached at iteration',str(k+1))
                 break
