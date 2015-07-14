@@ -37,7 +37,7 @@ class TestTimeDependent(unittest.TestCase):
         mod.add_BC('neumann',2,lambda x,t:0.0)
         mod.add_BC( 'dirichlet',3,lambda x,t: 26.0)
         mod.add_BC('neumann',4,lambda x,t:0.0)
-        mod.add_IC(lambda x:1+(x[0]-5)**2,eqn=0)
+        mod.add_IC(lambda x:1+(x[0]-5)**2,eqn_name='Diffusion')
         TimeDependentModel(mod,10.0,2)
         self.assertTrue(True)
 

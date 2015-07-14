@@ -59,27 +59,27 @@ def main():
     model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
-    model.add_BC('dirichlet',2,vdm)
-    model.add_BC('dirichlet',6,vdm)
-    model.add_BC('dirichlet',38,vdm)
+    model.add_BC('dirichlet',2,vdm,eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet',6,vdm,eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet',38,vdm,eqn_name='Shallow Shelf')
 
     # Boundary conditions for the cutouts
     for cut in [10,60,81]:
-        model.add_BC('dirichlet',cut,vdm)
+        model.add_BC('dirichlet',cut,vdm,eqn_name='Shallow Shelf')
 
     # Make a dirichlet condition at the calving front as well for inversion
     for shelf in [4,8]: # Crosson and Dotson respectively
-        model.add_BC('dirichlet',shelf,vdm)
+        model.add_BC('dirichlet',shelf,vdm,eqn_name='Shallow Shelf')
 
     model.add_equation(fem2d.ssaAdjointBeta())
     for edge in [2,4,6,8,10,38,60,81]:
-        model.add_BC('dirichlet',edge,lambda x:(0.0,0.0),eqn=1)
+        model.add_BC('dirichlet',edge,lambda x:(0.0,0.0),eqn_name='Shallow Shelf Adjoint')
 
     # Associate the measured velocities with the mesh
     rasterizeMesh(model.mesh,vdm,['u_d','v_d'],elementwise=True)
     
     multimodel=model.makeIterate()
-    multimodel.iterate([nus, None]) # Adjoint equation is linear
+    multimodel.iterate(gradient={'Shallow Shelf':nus}) # Adjoint equation is linear
 
 
     multimodel.models[0].plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)

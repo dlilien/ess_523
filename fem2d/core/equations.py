@@ -247,7 +247,6 @@ class shallowShelf(Equation):
         self.b = b
 
 
-
     def __call__(self,node1,node2,elements,rhs=False,**kwargs):
         """Attempt to solve the shallow-shelf approximation.
 
