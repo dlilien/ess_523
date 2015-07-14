@@ -19,7 +19,8 @@ class Node:
     def __init__(self, x, y, z=0.0, ident=None, parent=None):
         self.ass_elms = []
         self.neighbors = {} # Dictionary of nodes and the connecting elements
-        self.parent = parent
+        self.parent = parent # The mesh with which this node is associated
+        self.phys_vars = {} # Put physical variables here so namespace isn't polluted
         self.x = x
         self.y = y
         if ident is not None:
