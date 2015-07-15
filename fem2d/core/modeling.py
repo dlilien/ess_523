@@ -347,7 +347,6 @@ class eqnlist:
         return self.mainDict.values()
 
 
-
 class ModelIterate:
     """This object makes matrix, forms a solution, etc
 
@@ -1210,17 +1209,17 @@ class MultiModel:
                 if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers:
                     if self.model.eqn[name].lin:
                         print('SS iteration',str(k+1),'for linear',name)
-                        new=model.iterate(time=time,sol=self.sol,**kwargs)
+                        new=model.iterate(time=time,**kwargs)
                     else:
                         print('SS iteration',str(k+1),'for nonlinear',name)
-                        new=model.iterate(gradient[name],time=time,sol=self.sol,**kwargs)
+                        new=model.iterate(gradient[name],time=time,**kwargs)
                         model.eqn.guess=new[name].copy()
                     if k != 0:
                         ss_relchange[name]=np.linalg.norm(self.sol[name]-new[name])/np.sqrt(float(self.model.mesh.numnodes))/np.linalg.norm(new[name])
-                        self.sol[name]=new[name].copy()
+                    self.sol[name]=new[name].copy()
                     print(name,'Steady State change',ss_relchange[name])
                 else:
-                    model.iterate(sol=self.sol)
+                    model.iterate(sol=self.sol.copy())
             if np.all([ss_relchange[name]<eqn.ss_tolerance for name,eqn in self.model.eqn.items() if [eqnum for eqnum,eqname in self.model.eqn.keyPairs if eqname==name][0] in self.model.eqn.de_numbers]) and k !=0:
                 print('Steady State convergence reached at iteration',str(k+1))
                 break

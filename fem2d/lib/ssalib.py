@@ -186,5 +186,48 @@ def surfaceSlope(mesh,surface):
 
 
 class OptimizeBeta(Function):
+    """ This function does the optimization to seek for the solution for beta
+
+    Parameters
+    ----------
+    ssa_sol_name : str, optional
+       Name of the shallow shelf solver. Default 'Shallow Shelf'
+    ssa_adjoint_sol_name : str, optional
+       Name of the shallow shelf adjoint solver. Default 'Shallow Shelf Adjoint'
+    beta : str,optional
+       Name of the slip variable
+    """
+    def __init__(self, ssa_sol_name='Shallow Shelf', ssa_adjoint_sol_name='Shallow Shelf Adjoint',beta='b'):
+        self.ssan=ssa_sol_name
+        self.ssaan=ssa_adjoint_sol_name
+        self.beta=beta
+        self.call=0
+
     def __call__(self,mesh,model,solution):
-        pass
+        self.call+=1
+        gradJ=np.zeros(mesh.numnodes)
+        for node_num in mesh.nodes:
+            for el_num in mesh.nodes[node_num].ass_elms:
+                elm=mesh.elements[el_num[0]]
+                if elm.eltypes==2:
+                    k=elm.nodes.index(node_num)
+                    for i in range(3):
+                        for j in range(3):
+                            if i==j:
+                                if i==k:
+                                    gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/10.0
+                                else:
+                                    gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/30.0     
+                            elif j==k or i==k:
+                                gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/30.0
+                            else:
+                                gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/60.0
+        gradJ=gradJ/np.linalg.norm(gradJ)
+        scale=2.0**float(-self.call)
+        for node_num,node in mesh.nodes.items():
+            node.phys_vars[self.beta]=node.phys_vars[self.beta]+scale*gradJ[node_num-1]
+
+
+
+
+        

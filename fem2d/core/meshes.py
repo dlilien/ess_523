@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
@@ -14,6 +14,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import solve
 class Node:
+    """An individual node on a mesh
+
+    Attributes
+    ----------
+    ass_elms : list
+       Elements surrounding this node
+    neighbors : dict
+       Dictionary of Node:[elements] where the elements are shared between the nodes
+    parent : Mesh
+       The mesh with which this node is associated
+    phys_vars : dict
+       A container for physical variables where they won't pollute the namespace
+    x : float
+       The x coordinate
+    y : float
+       The y coordinate
+    id : int
+       The number of this element
+    """
     curr_id = 0
 
     def __init__(self, x, y, z=0.0, ident=None, parent=None):

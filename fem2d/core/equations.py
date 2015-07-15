@@ -21,8 +21,6 @@ class Equation:
     ----------
     relaxation : float,optional
        The amount to relax. Use less than 1 if you have convergence problems. Defaults to 1.0.
-    ss_maxiter : int,optional
-       The maximum number of steady state iterations allowed. Default 50.
     ss_tolerance : float, optional
        The tolerance in steady state for each equation. Default 1.0e-3.
     nl_tolerance : float,optional
@@ -223,13 +221,13 @@ class shallowShelf(Equation):
     Keyword Arguments
     -----------------
     b : float
-       The value of the friction coefficient. Can be a or a function. I use elemental average values. 
+       The value of the friction coefficient. Can be a float a function. I use elemental average values, but interpolate onto the nodes. 
     thickness : function
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
 
-    def __init__( self, b, g=9.8,rho=917.0,**kwargs):
+    def __init__( self, b=None, g=9.8, rho=917.0, **kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are constant scalars)     
         if 'h' in kwargs:
@@ -286,10 +284,13 @@ class shallowShelf(Equation):
         # need ice density (again not hard codes for unit flexibility) called rho
         # need viscosity, call it nu
 
-        # Check for required inputs
-        if not np.all(['b' in elm[1].phys_vars for elm in elements]):
+        if self.b:
             for elm in elements:
                 elm[1].phys_vars['b']=np.average([self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
+
+        else:
+            for elm in elements:
+                elm[1].phys_vars['b']=np.average([elm[1].parent.nodes[node].phys_vars['b'] for node in elm[1].nodes])
 
         if not 'dzs' in elements[0][1].phys_vars:
             raise AttributeError('No surface slope associated with mesh, need tuple/array')

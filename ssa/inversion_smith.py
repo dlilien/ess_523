@@ -36,8 +36,7 @@ def main():
     thick=Raster('tiffs/smoothed_combination.tif','tiffs/ZBgeo.tif',subtract=True,ndv={0:'<0.0',1:'<-4.0e4'})
 
     # inverted beta
-    #beta=Raster('tiffs/beta.tif')
-    beta = lambda x: 0.0
+    beta=Raster('tiffs/beta.tif')
 
 
     # surface temperature
@@ -56,7 +55,7 @@ def main():
     surfaceSlope(model.mesh,thick.spline)
 
     # Add some equation properties to the model
-    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
+    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),ss_tolerance=1.0e-8,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
     model.add_BC('dirichlet',2,vdm,eqn_name='Shallow Shelf')
@@ -77,6 +76,7 @@ def main():
 
     # Associate the measured velocities with the mesh
     rasterizeMesh(model.mesh,vdm,['u_d','v_d'],elementwise=True)
+    rasterizeMesh(model.mesh,beta,['b'],elementwise=False)
 
     # Dummy routine for optimization
     model.add_function(OptimizeBeta())

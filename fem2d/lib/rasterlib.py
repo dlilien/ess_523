@@ -117,8 +117,8 @@ def rasterizeMesh(mesh,raster,var_names,elementwise=True):
     else:
         for node in mesh.nodes.values():
             if raster.splines==1:
-                node.phys_vars[var_names[0]]=raster(node.coords)
+                node.phys_vars[var_names[0]]=raster(node.coords())
             else:
-                node.phys_vars[var_names[0]],node.phys_vars[var_names[1]]=raster(node.coords)
+                node.phys_vars[var_names[0]],node.phys_vars[var_names[1]]=raster(node.coords())
             
                
