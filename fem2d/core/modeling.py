@@ -907,7 +907,7 @@ class NonLinearModel:
     def __init__(self,model,eqn_name=None):
         self.model=model
         if eqn_name is None:
-            self.eqn_name=list(model.eqn.values)[0]
+            self.eqn_name=list(model.eqn.mainDict.keys())[0]
         else:
             self.eqn_name=eqn_name
         self.eqn=model.eqn[self.eqn_name]

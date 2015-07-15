@@ -12,7 +12,7 @@ unittests on each equation
 
 import numpy as np
 import unittest
-from fem2d.core import Model,LinearModel,diffusion,advectionDiffusion
+from fem2d.core import Model,LinearModel,diffusion,advectionDiffusion,shallowShelf
 from os import path
 
 
@@ -37,6 +37,15 @@ class TestEqautions(unittest.TestCase):
         admo.add_BC('neumann',4,lambda x:0.0)
         am=LinearModel(admo)
         am.iterate(v=lambda x:np.array([1.0,0.0]))
+        self.assertTrue(True)
+
+    def test_ssa(self):
+        mo=Model(path.join(path.split(__file__)[0],'test_lib/testmesh.msh'))
+        mo.add_equation(shallowShelf())
+        mo.add_BC('dirichlet',1,lambda x:(1.0,1.0))
+        mo.add_BC('dirichlet',2,lambda x:(1.0,1.0))
+        mo.add_BC('dirichlet',3,lambda x:(1.0,1.0))
+        mo.add_BC('neumann',4,lambda x:(0.0,0.0))
         self.assertTrue(True)
 
 if __name__=='__main__':

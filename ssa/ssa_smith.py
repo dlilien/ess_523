@@ -37,8 +37,8 @@ def main():
     thick=Raster('tiffs/smoothed_combination.tif','tiffs/ZBgeo.tif',subtract=True,ndv={0:'<0.0',1:'<-4.0e4'})
 
     # inverted beta
-    #beta=Raster('tiffs/beta.tif')
-    beta = lambda x: 0.0
+    beta=Raster('tiffs/beta.tif')
+    #beta = lambda x: 0.0
 
 
     # surface temperature
@@ -60,28 +60,27 @@ def main():
     model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
-    model.add_BC('dirichlet',2,vdm)
-    model.add_BC('dirichlet',6,vdm)
-    model.add_BC('dirichlet',38,vdm)
+    model.add_BC('dirichlet', 2, vdm, eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet', 6, vdm, eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet', 38, vdm, eqn_name='Shallow Shelf')
 
     # Boundary conditions for the cutouts
     for cut in [10,60,81]:
-        model.add_BC('dirichlet',cut,vdm)
+        model.add_BC('dirichlet', cut, vdm, eqn_name='Shallow Shelf')
 
     # Getting dicey. Hopefully this is stress-free
     for shelf in [4,8]: # Crosson and Dotson respectively
-        # model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
+        model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
 
         # for debugging:
-        model.add_BC('dirichlet',shelf,vdm)
+        #model.add_BC('dirichlet',shelf,vdm)
 
     # Now set the non-linear model up to be solved
     nlmodel=model.makeIterate()
-    nlmodel.iterate(nus)
+    nlmodel.iterate(gradient=nus)
 
 
-    nlmodel.plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
-    nlmodel.plotSolution(target='h',nodewise=False,show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    nlmodel.plotSolution(threeD=False,show=True,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
     return nlmodel
 
 

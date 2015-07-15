@@ -7,7 +7,7 @@
 # Distributed under terms of the MIT license.
 
 """
-Try doing the shallow shelf approximation on Smith Glacier
+Try inversion for beta
 """
 
 import fem2d
@@ -58,13 +58,13 @@ def main():
     model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),ss_tolerance=1.0e-8,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
 
     # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
-    model.add_BC('dirichlet',2,vdm,eqn_name='Shallow Shelf')
-    model.add_BC('dirichlet',6,vdm,eqn_name='Shallow Shelf')
-    model.add_BC('dirichlet',38,vdm,eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet', 2, vdm, eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet', 6, vdm, eqn_name='Shallow Shelf')
+    model.add_BC('dirichlet', 38, vdm, eqn_name='Shallow Shelf')
 
     # Boundary conditions for the cutouts
     for cut in [10,60,81]:
-        model.add_BC('dirichlet',cut,vdm,eqn_name='Shallow Shelf')
+        model.add_BC('dirichlet', cut, vdm, eqn_name='Shallow Shelf')
 
     # Make a dirichlet condition at the calving front as well for inversion
     for shelf in [4,8]: # Crosson and Dotson respectively

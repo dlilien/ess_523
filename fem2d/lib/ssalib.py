@@ -11,7 +11,10 @@ Some functions for use with map view shallow shelf approximations
 """
 
 import numpy as np
-from ..core.equations import Function
+try:
+    from ..core.equations import Function
+except ValueError:
+    from core.equations import Function
 yearInSeconds=365.25*24.0*60.0*60.0
 
 class nu:
@@ -49,7 +52,7 @@ class nu:
 
         Parameters
         ----------
-        nlmodel : classes.NonLinearModel
+        nlmodel : modeling.NonLinearModel
             The model for which we are finding the viscosity
         velocity : array
             The previous solution
@@ -102,6 +105,7 @@ class lapse_tempDEM:
     """Use some lapse rates and a surface DEM to calculate temperature
     
     Coordinates must be in Antarctic Polar Stereographic, or you need to write a new function to calculate latitude
+
     Parameters
     ----------
     surf : function
@@ -139,12 +143,20 @@ class lapse_tempDEM:
 def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
     """The actual viscosity formula, called by nu
 
+    The actual formula used for PaS is :math:`(3.5\\times10^{-25}\\times a)^{\\frac1n}`
+    and for MPaA is :math:`(3.5\\times10^{-25}\\times a\\times \\text{yearinsec})^{\\frac1n}\\times10^{6}`
+    
+    where :math:`3.5\\times10^{-25}` is taken from Cuffey and Patterson, :math:`a` is the Arrhenius factor calculated by :py:meth:`getArrheniusFactor` and :math:`n` is the Glen's flow law exponent.
+
+
     Parameters
     ----------
     du : array
         vector derivative of u
     dv : array
         vector derivative of v
+    af : float
+        The Arrhenius factor
     critical_shear_rate : float,optional
         if not None, return the viscosity at this rate if the shear is lower. Default is 1.0e-9
     units : string,optional
@@ -169,7 +181,7 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
     if critical_shear_rate is not None:
         if strainRate<critical_shear_rate:
             strainRate=critical_shear_rate
-    return pref*strainRate**(-(n-1.0)/(2*n))/2.0
+    return pref*strainRate**(-(n-1.0)/(2.0*n))/2.0
 
 
 def surfaceSlope(mesh,surface):
