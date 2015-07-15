@@ -12,4 +12,4 @@ Make it easy to get the fundamental utilities
 
 # Get the most essential portions of the project
 from .core import *
-__all__=['core.modeling','core.equations']
+__all__ = ['core.modeling', 'core.equations']

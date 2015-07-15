@@ -11,10 +11,12 @@ Try inversion for beta
 """
 
 import fem2d
-from fem2d.lib import Raster,nu,surfaceSlope,rasterizeMesh,OptimizeBeta
+from fem2d.lib import Raster, nu, surfaceSlope, rasterizeMesh, OptimizeBeta
 
 # global constant for unit conversion
-yearInSeconds=365.25*24.0*60.0*60.0 # This will be convenient for units
+# This will be convenient for units
+yearInSeconds = 365.25 * 24.0 * 60.0 * 60.0
+
 
 def main():
     """Do an SSA approximation on Smith Glacier, steady state
@@ -27,67 +29,101 @@ def main():
 
     # Make some splines of a few different properties
 
-    #velocity for comparison
-    #vdm=velocityDEMs()
-    vdm=Raster('tiffs/mosaicOffsets_x_vel.tif','tiffs/mosaicOffsets_y_vel.tif')
+    # velocity for comparison
+    # vdm=velocityDEMs()
+    vdm = Raster(
+        'tiffs/mosaicOffsets_x_vel.tif',
+        'tiffs/mosaicOffsets_y_vel.tif')
 
-
-    #thickness raster, zero out bad values
-    thick=Raster('tiffs/smoothed_combination.tif','tiffs/ZBgeo.tif',subtract=True,ndv={0:'<0.0',1:'<-4.0e4'})
+    # thickness raster, zero out bad values
+    thick = Raster(
+        'tiffs/smoothed_combination.tif',
+        'tiffs/ZBgeo.tif',
+        subtract=True,
+        ndv={
+            0: '<0.0',
+            1: '<-4.0e4'})
 
     # inverted beta
-    beta=Raster('tiffs/beta.tif')
-
+    beta = Raster('tiffs/beta.tif')
 
     # surface temperature
-    temp=Raster('tiffs/temperature.tif')
+    temp = Raster('tiffs/temperature.tif')
     # basic viscosity class
-    nus=nu(temp=temp)
+    nus = nu(temp=temp)
 
     # Create our model
-    model=fem2d.Model('floatingsmith.msh')
+    model = fem2d.Model('floatingsmith.msh')
 
     # The model now has a mesh associate (mesh.model) to which we attach properties
     # which are not going to change during the simulation (i.e. everything but
     # viscosity
 
     # surface slope
-    surfaceSlope(model.mesh,thick.spline)
+    surfaceSlope(model.mesh, thick.spline)
 
     # Add some equation properties to the model
-    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),ss_tolerance=1.0e-8,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
+    model.add_equation(fem2d.shallowShelf(g=-9.8 * yearInSeconds**2,
+                                          rho=917.0 / (1.0e6 * yearInSeconds**2),
+                                          ss_tolerance=1.0e-8,
+                                          thickness=thick,
+                                          relaxation=1.0,
+                                          nl_maxiter=50,
+                                          nl_tolerance=1.0e-5,
+                                          method='CG'))
 
-    # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
+    # Grounded boundaries, done lazily since 2 are not inflows so what do we
+    # do?
     model.add_BC('dirichlet', 2, vdm, eqn_name='Shallow Shelf')
     model.add_BC('dirichlet', 6, vdm, eqn_name='Shallow Shelf')
     model.add_BC('dirichlet', 38, vdm, eqn_name='Shallow Shelf')
 
     # Boundary conditions for the cutouts
-    for cut in [10,60,81]:
+    for cut in [10, 60, 81]:
         model.add_BC('dirichlet', cut, vdm, eqn_name='Shallow Shelf')
 
     # Make a dirichlet condition at the calving front as well for inversion
-    for shelf in [4,8]: # Crosson and Dotson respectively
-        model.add_BC('dirichlet',shelf,vdm,eqn_name='Shallow Shelf')
+    for shelf in [4, 8]:  # Crosson and Dotson respectively
+        model.add_BC('dirichlet', shelf, vdm, eqn_name='Shallow Shelf')
 
     model.add_equation(fem2d.ssaAdjointBeta())
-    for edge in [2,4,6,8,10,38,60,81]:
-        model.add_BC('dirichlet',edge,lambda x:(0.0,0.0),eqn_name='Shallow Shelf Adjoint')
+    for edge in [2, 4, 6, 8, 10, 38, 60, 81]:
+        model.add_BC(
+            'dirichlet',
+            edge,
+            lambda x: (
+                0.0,
+                0.0),
+            eqn_name='Shallow Shelf Adjoint')
 
     # Associate the measured velocities with the mesh
-    rasterizeMesh(model.mesh,vdm,['u_d','v_d'],elementwise=True)
-    rasterizeMesh(model.mesh,beta,['b'],elementwise=False)
+    rasterizeMesh(model.mesh, vdm, ['u_d', 'v_d'], elementwise=True)
+    rasterizeMesh(model.mesh, beta, ['b'], elementwise=False)
 
     # Dummy routine for optimization
     model.add_function(OptimizeBeta())
-    
-    multimodel=model.makeIterate()
-    multimodel.iterate(gradient={'Shallow Shelf':nus}) # Adjoint equation is linear
 
-    multimodel.models['Shallow Shelf'].plotSolution(threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
-    multimodel.models['Shallow Shelf'].plotSolution(target='h',nodewise=False,show=True,threeD=False,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    multimodel = model.makeIterate()
+    # Adjoint equation is linear
+    multimodel.iterate(gradient={'Shallow Shelf': nus})
+
+    multimodel.models['Shallow Shelf'].plotSolution(
+        threeD=False,
+        vel=True,
+        x_steps=200,
+        y_steps=200,
+        cutoff=7000.0)
+    multimodel.models['Shallow Shelf'].plotSolution(
+        target='h',
+        nodewise=False,
+        show=True,
+        threeD=False,
+        vel=True,
+        x_steps=200,
+        y_steps=200,
+        cutoff=7000.0)
     return multimodel
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()

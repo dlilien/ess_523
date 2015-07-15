@@ -27,13 +27,25 @@ def shp_to_xy(in_file):
 
 def gmsh_outline(fname, outline, outlc):
     """Write points to a file which then can be meshed"""
-    # This is going to make a somewhat messy mesh in terms of numbering. Oh well
+    # This is going to make a somewhat messy mesh in terms of numbering. Oh
+    # well
     fid = open(fname, 'w')
     fid.write('lc={:4.2f};\n'.format(outlc.min()))
     formatspec = 'p{:d}=newp; Point(p{:d})={{{:4.3f}, {:4.3f}, 0.0, {:4.3f}}};\n'
     for i in range(0, len(outline)):
         fid.write(
-            formatspec.format(i + 1, i + 1, outline[i, 0], outline[i, 1], outlc[i, 0]))
+            formatspec.format(
+                i + 1,
+                i + 1,
+                outline[
+                    i,
+                    0],
+                outline[
+                    i,
+                    1],
+                outlc[
+                    i,
+                    0]))
     lx = len(outline)
     fid.write('s{:d}=newreg; Spline(s{:d})={{p{:d}'.format(1, 1, 1))
     for j in range(0, lx - 1):
@@ -60,4 +72,3 @@ def gmsh_outline_shp(out_fn, in_fn, lc):
     lcs = np.zeros([len(outline), 1])
     lcs[lcs == 0] = lc
     gmsh_outline(out_fn, outline, lcs)
-

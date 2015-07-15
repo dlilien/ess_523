@@ -15,4 +15,4 @@ from .gmshlib import *
 from .rasterlib import *
 from .ssalib import *
 
-__all__=['glib3','gmshlib','rasterlib','ssalib']
+__all__ = ['glib3', 'gmshlib', 'rasterlib', 'ssalib']

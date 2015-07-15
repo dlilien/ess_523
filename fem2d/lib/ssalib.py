@@ -15,9 +15,11 @@ try:
     from ..core.equations import Function
 except ValueError:
     from core.equations import Function
-yearInSeconds=365.25*24.0*60.0*60.0
+yearInSeconds = 365.25 * 24.0 * 60.0 * 60.0
+
 
 class nu:
+
     """Class for doing the viscosity calculation
 
     critical_shear_rate : float,optional
@@ -31,17 +33,24 @@ class nu:
     max_val: float, optional
         Return this if the strain is zero (causes division error). Defaults to 1.0e32
     units : string,optional
-        Must be MPaA or PaS. I.e. do you want to scale nicely for numerics? Default is MPaA.   
+        Must be MPaA or PaS. I.e. do you want to scale nicely for numerics? Default is MPaA.
         """
-    def __init__(self,critical_shear_rate=1.0e-09,B_0=None,temp=lambda x: -10.0,n=3.0,units='MPaA'):
-        self.critical_shear_rate=critical_shear_rate
-        self.B_0=B_0
-        self.temp=temp
-        self.n=n
-        self.units=units
-    
-    
-    def __call__(self,nlmodel,velocity,*args,**kwargs):
+
+    def __init__(
+            self,
+            critical_shear_rate=1.0e-09,
+            B_0=None,
+            temp=lambda x: -
+            10.0,
+            n=3.0,
+            units='MPaA'):
+        self.critical_shear_rate = critical_shear_rate
+        self.B_0 = B_0
+        self.temp = temp
+        self.n = n
+        self.units = units
+
+    def __call__(self, nlmodel, velocity, *args, **kwargs):
         """Calculate the viscosity of ice given a velocity field and a temperature
 
         Remember viscosity is a function of strain rate not velocity, so we need to
@@ -59,24 +68,36 @@ class nu:
         """
 
         # save some typing for things we will need to use a lot
-        elements=nlmodel.model.mesh.elements
+        elements = nlmodel.model.mesh.elements
 
         # We are going to calculate the viscosity element-wise since this is how we have
         # the velocity gradients. The gradients are piecewise constant, so we don't need
         # to do anything fancy with Gauss Points.
 
         for element in elements.values():
-            du=np.sum([velocity[2*(number-1)]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-            dv=np.sum([velocity[2*number-1]*np.array(element.dbases[index]) for index,number in enumerate(element.nodes)],0)
-            if not hasattr(element,'_b'):
+            du = np.sum([velocity[2 * (number - 1)] * np.array(element.dbases[index])
+                         for index, number in enumerate(element.nodes)], 0)
+            dv = np.sum([velocity[2 * number - 1] * np.array(element.dbases[index])
+                         for index, number in enumerate(element.nodes)], 0)
+            if not hasattr(element, '_b'):
                 if self.B_0 is None:
-                    element._af=getArrheniusFactor(np.sum([gpt[0]*self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
+                    element._af = getArrheniusFactor(
+                        np.sum([gpt[0] * self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
                 else:
-                    element._af=self.B_0
-            element.phys_vars['nu']=visc(du,dv,element._af,n=self.n,critical_shear_rate=self.critical_shear_rate,units=self.units)
-            element.phys_vars['u']=np.average([velocity[2*(number-1)] for index,number in enumerate(element.nodes)])
-            element.phys_vars['v']=np.average([velocity[2*number-1] for index,number in enumerate(element.nodes)])
-        print('Average viscosity is {:e}'.format(float(np.average([elm.phys_vars['nu'] for elm in elements.values()]))),end=' ')
+                    element._af = self.B_0
+            element.phys_vars['nu'] = visc(
+                du,
+                dv,
+                element._af,
+                n=self.n,
+                critical_shear_rate=self.critical_shear_rate,
+                units=self.units)
+            element.phys_vars['u'] = np.average(
+                [velocity[2 * (number - 1)] for index, number in enumerate(element.nodes)])
+            element.phys_vars['v'] = np.average(
+                [velocity[2 * number - 1] for index, number in enumerate(element.nodes)])
+        print('Average viscosity is {:e}'.format(
+            float(np.average([elm.phys_vars['nu'] for elm in elements.values()]))), end=' ')
 
 
 def getArrheniusFactor(temp):
@@ -93,17 +114,19 @@ def getArrheniusFactor(temp):
     -------
        The prefactor B: float
     """
-    if temp<-10:
-        return np.exp(-60.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
-    elif temp<0:
-        return np.exp(-115.0e3/8.314*(1.0/273.15+1.0/(273.15+temp)))
+    if temp < -10:
+        return np.exp(-60.0e3 / 8.314 * (1.0 / 273.15 + 1.0 / (273.15 + temp)))
+    elif temp < 0:
+        return np.exp(-115.0e3 / 8.314 *
+                      (1.0 / 273.15 + 1.0 / (273.15 + temp)))
     else:
-        return np.exp(-115.0e3/8.314*(1.0/273.15))
+        return np.exp(-115.0e3 / 8.314 * (1.0 / 273.15))
 
 
 class lapse_tempDEM:
+
     """Use some lapse rates and a surface DEM to calculate temperature
-    
+
     Coordinates must be in Antarctic Polar Stereographic, or you need to write a new function to calculate latitude
 
     Parameters
@@ -117,11 +140,13 @@ class lapse_tempDEM:
     base : float,optional
         Temperature at the equator at 0 degrees
     """
-    def __init__(self,surf,lat_lapse=0.68775,alt_lapse=9.14e-3,base=34.36):
+
+    def __init__(self, surf, lat_lapse=0.68775, alt_lapse=9.14e-3, base=34.36):
         self.ll = lat_lapse
         self.al = alt_lapse
-        self.surf=surf
+        self.surf = surf
         self.base = base
+
     def __call__(self, pt):
         """ Return the temperature in Celcius
 
@@ -136,16 +161,17 @@ class lapse_tempDEM:
            Temperature in degrees C
         """
 
-        lat=(-np.pi/2.0 + 2.0 * np.arctan(np.sqrt(pt[0]**2.0 + pt[1]**2.0)/(2.0*6371225.0*0.97276)))*360.0/(2.0*np.pi)
-        return self.base  - self.ll * abs(lat) - self.al * self.surf(pt)
+        lat = (-np.pi / 2.0 + 2.0 * np.arctan(np.sqrt(pt[0]**2.0 + pt[1]**2.0) / (
+            2.0 * 6371225.0 * 0.97276))) * 360.0 / (2.0 * np.pi)
+        return self.base - self.ll * abs(lat) - self.al * self.surf(pt)
 
 
-def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
+def visc(du, dv, af, n=3.0, critical_shear_rate=1.0e-9, units='MPaA'):
     """The actual viscosity formula, called by nu
 
     The actual formula used for PaS is :math:`(3.5\\times10^{-25}\\times a)^{\\frac1n}`
     and for MPaA is :math:`(3.5\\times10^{-25}\\times a\\times \\text{yearinsec})^{\\frac1n}\\times10^{6}`
-    
+
     where :math:`3.5\\times10^{-25}` is taken from Cuffey and Patterson, :math:`a` is the Arrhenius factor calculated by :py:meth:`getArrheniusFactor` and :math:`n` is the Glen's flow law exponent.
 
 
@@ -161,43 +187,57 @@ def visc(du,dv,af,n=3.0,critical_shear_rate=1.0e-9,units='MPaA'):
         if not None, return the viscosity at this rate if the shear is lower. Default is 1.0e-9
     units : string,optional
         Must be MPaA or PaS. I.e. do you want to scale nicely for numerics? Default is MPaA.
-    
+
     Returns
     -------
     Viscosity: float
     """
 
-
     # Get the coefficient
     if units == 'MPaA':
-        pref=(3.5e-25*af)**(-1.0/n)*yearInSeconds**(-(1.0)/n)*1.0e-6
+        pref = (3.5e-25 * af)**(-1.0 / n) * \
+            yearInSeconds**(-(1.0) / n) * 1.0e-6
     elif units == 'PaS':
-        pref=(3.5e-25*af)**(-1.0/n)
+        pref = (3.5e-25 * af)**(-1.0 / n)
     else:
         raise ValueError('Units must be MPaA or PaS')
 
-
-    strainRate=float(du[0]**2.0+dv[1]**2.0+0.25*(du[1]+dv[0])**2.0+du[0]*dv[1])
+    strainRate = float(du[0]**2.0 +
+                       dv[1]**2.0 +
+                       0.25 *
+                       (du[1] +
+                        dv[0])**2.0 +
+                       du[0] *
+                       dv[1])
     if critical_shear_rate is not None:
-        if strainRate<critical_shear_rate:
-            strainRate=critical_shear_rate
-    return pref*strainRate**(-(n-1.0)/(2.0*n))/2.0
+        if strainRate < critical_shear_rate:
+            strainRate = critical_shear_rate
+    return pref * strainRate**(-(n - 1.0) / (2.0 * n)) / 2.0
 
 
-def surfaceSlope(mesh,surface):
+def surfaceSlope(mesh, surface):
     """Calculate the surface slope on a mesh using nodal values and basis functions"""
-    # note that this function could be repeatedly re-called for a time-dependent simulation
+    # note that this function could be repeatedly re-called for a
+    # time-dependent simulation
 
     # associate a thickness with every node
     for node in mesh.nodes.values():
-        node.surf=surface([node.x,node.y])
+        node.surf = surface([node.x, node.y])
 
     # associate a 2d slope with every mesh point
     for element in mesh.elements.values():
-        element.phys_vars['dzs']=np.sum([mesh.nodes[node].surf*np.array(element.dbases[i]) for i,node in enumerate(element.nodes)],0)
+        element.phys_vars['dzs'] = np.sum(
+            [
+                mesh.nodes[node].surf *
+                np.array(
+                    element.dbases[i]) for i,
+                node in enumerate(
+                    element.nodes)],
+            0)
 
 
 class OptimizeBeta(Function):
+
     """ This function does the optimization to seek for the solution for beta
 
     Parameters
@@ -209,37 +249,42 @@ class OptimizeBeta(Function):
     beta : str,optional
        Name of the slip variable
     """
-    def __init__(self, ssa_sol_name='Shallow Shelf', ssa_adjoint_sol_name='Shallow Shelf Adjoint',beta='b'):
-        self.ssan=ssa_sol_name
-        self.ssaan=ssa_adjoint_sol_name
-        self.beta=beta
-        self.call=0
 
-    def __call__(self,mesh,model,solution):
-        self.call+=1
-        gradJ=np.zeros(mesh.numnodes)
+    def __init__(
+            self,
+            ssa_sol_name='Shallow Shelf',
+            ssa_adjoint_sol_name='Shallow Shelf Adjoint',
+            beta='b'):
+        self.ssan = ssa_sol_name
+        self.ssaan = ssa_adjoint_sol_name
+        self.beta = beta
+        self.call = 0
+
+    def __call__(self, mesh, model, solution):
+        self.call += 1
+        gradJ = np.zeros(mesh.numnodes)
         for node_num in mesh.nodes:
             for el_num in mesh.nodes[node_num].ass_elms:
-                elm=mesh.elements[el_num[0]]
-                if elm.eltypes==2:
-                    k=elm.nodes.index(node_num)
+                elm = mesh.elements[el_num[0]]
+                if elm.eltypes == 2:
+                    k = elm.nodes.index(node_num)
                     for i in range(3):
                         for j in range(3):
-                            if i==j:
-                                if i==k:
-                                    gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/10.0
+                            if i == j:
+                                if i == k:
+                                    gradJ[node_num - 1] += 2 * elm.phys_vars[self.beta] * (solution[self.ssan][2 * (elm.nodes[i] - 1)] * solution[self.ssaan][2 * (
+                                        elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 10.0
                                 else:
-                                    gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/30.0     
-                            elif j==k or i==k:
-                                gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/30.0
+                                    gradJ[node_num - 1] += 2 * elm.phys_vars[self.beta] * (solution[self.ssan][2 * (elm.nodes[i] - 1)] * solution[self.ssaan][2 * (
+                                        elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 30.0
+                            elif j == k or i == k:
+                                gradJ[node_num - 1] += 2 * elm.phys_vars[self.beta] * (solution[self.ssan][2 * (elm.nodes[i] - 1)] * solution[self.ssaan][2 * (
+                                    elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 30.0
                             else:
-                                gradJ[node_num-1]+=2*elm.phys_vars[self.beta]*(solution[self.ssan][2*(elm.nodes[i]-1)]*solution[self.ssaan][2*(elm.nodes[j]-1)]+solution[self.ssan][2*elm.nodes[i]-1]*solution[self.ssaan][2*elm.nodes[j]-1])*elm.area/60.0
-        gradJ=gradJ/np.linalg.norm(gradJ)
-        scale=2.0**float(-self.call)
-        for node_num,node in mesh.nodes.items():
-            node.phys_vars[self.beta]=node.phys_vars[self.beta]+scale*gradJ[node_num-1]
-
-
-
-
-        
+                                gradJ[node_num - 1] += 2 * elm.phys_vars[self.beta] * (solution[self.ssan][2 * (elm.nodes[i] - 1)] * solution[self.ssaan][2 * (
+                                    elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 60.0
+        gradJ = gradJ / np.linalg.norm(gradJ)
+        scale = 2.0**float(-self.call)
+        for node_num, node in mesh.nodes.items():
+            node.phys_vars[self.beta] = node.phys_vars[
+                self.beta] + scale * gradJ[node_num - 1]

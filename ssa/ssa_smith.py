@@ -11,10 +11,11 @@ Try doing the shallow shelf approximation on Smith Glacier
 """
 
 import fem2d
-from fem2d.lib import Raster,nu,surfaceSlope
+from fem2d.lib import Raster, nu, surfaceSlope
 
 # global constant for unit conversion
-yearInSeconds=365.25*24.0*60.0*60.0 # This will be convenient for units
+# This will be convenient for units
+yearInSeconds = 365.25 * 24.0 * 60.0 * 60.0
 
 
 def main():
@@ -28,61 +29,80 @@ def main():
 
     # Make some splines of a few different properties
 
-    #velocity for comparison
-    #vdm=velocityDEMs()
-    vdm=Raster('tiffs/mosaicOffsets_x_vel.tif','tiffs/mosaicOffsets_y_vel.tif')
+    # velocity for comparison
+    # vdm=velocityDEMs()
+    vdm = Raster(
+        'tiffs/mosaicOffsets_x_vel.tif',
+        'tiffs/mosaicOffsets_y_vel.tif')
 
-
-    #thickness raster, zero out bad values
-    thick=Raster('tiffs/smoothed_combination.tif','tiffs/ZBgeo.tif',subtract=True,ndv={0:'<0.0',1:'<-4.0e4'})
+    # thickness raster, zero out bad values
+    thick = Raster(
+        'tiffs/smoothed_combination.tif',
+        'tiffs/ZBgeo.tif',
+        subtract=True,
+        ndv={
+            0: '<0.0',
+            1: '<-4.0e4'})
 
     # inverted beta
-    beta=Raster('tiffs/beta.tif')
+    beta = Raster('tiffs/beta.tif')
     #beta = lambda x: 0.0
 
-
     # surface temperature
-    temp=Raster('tiffs/temperature.tif')
+    temp = Raster('tiffs/temperature.tif')
     # basic viscosity class
-    nus=nu(temp=temp)
+    nus = nu(temp=temp)
 
     # Create our model
-    model=fem2d.Model('floatingsmith.msh')
+    model = fem2d.Model('floatingsmith.msh')
 
     # The model now has a mesh associate (mesh.model) to which we attach properties
     # which are not going to change during the simulation (i.e. everything but
     # viscosity
 
     # surface slope
-    surfaceSlope(model.mesh,thick.spline)
+    surfaceSlope(model.mesh, thick.spline)
 
     # Add some equation properties to the model
-    model.add_equation(fem2d.shallowShelf(g=-9.8*yearInSeconds**2,rho=917.0/(1.0e6*yearInSeconds**2),b=beta,thickness=thick,relaxation=1.0,nl_maxiter=50,nl_tolerance=1.0e-5,method='CG'))
+    model.add_equation(fem2d.shallowShelf(g=-9.8 * yearInSeconds**2,
+                                          rho=917.0 / (1.0e6 * yearInSeconds**2),
+                                          b=beta,
+                                          thickness=thick,
+                                          relaxation=1.0,
+                                          nl_maxiter=50,
+                                          nl_tolerance=1.0e-5,
+                                          method='CG'))
 
-    # Grounded boundaries, done lazily since 2 are not inflows so what do we do?
+    # Grounded boundaries, done lazily since 2 are not inflows so what do we
+    # do?
     model.add_BC('dirichlet', 2, vdm, eqn_name='Shallow Shelf')
     model.add_BC('dirichlet', 6, vdm, eqn_name='Shallow Shelf')
     model.add_BC('dirichlet', 38, vdm, eqn_name='Shallow Shelf')
 
     # Boundary conditions for the cutouts
-    for cut in [10,60,81]:
+    for cut in [10, 60, 81]:
         model.add_BC('dirichlet', cut, vdm, eqn_name='Shallow Shelf')
 
     # Getting dicey. Hopefully this is stress-free
-    for shelf in [4,8]: # Crosson and Dotson respectively
-        model.add_BC('neumann',shelf,lambda x: [0.0,0.0])
+    for shelf in [4, 8]:  # Crosson and Dotson respectively
+        model.add_BC('neumann', shelf, lambda x: [0.0, 0.0])
 
         # for debugging:
-        #model.add_BC('dirichlet',shelf,vdm)
+        # model.add_BC('dirichlet',shelf,vdm)
 
     # Now set the non-linear model up to be solved
-    nlmodel=model.makeIterate()
+    nlmodel = model.makeIterate()
     nlmodel.iterate(gradient=nus)
 
-
-    nlmodel.plotSolution(threeD=False,show=True,vel=True,x_steps=200,y_steps=200,cutoff=7000.0)
+    nlmodel.plotSolution(
+        threeD=False,
+        show=True,
+        vel=True,
+        x_steps=200,
+        y_steps=200,
+        cutoff=7000.0)
     return nlmodel
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()

@@ -104,7 +104,8 @@ def mat2gtif(fn, x, y, z, t_srs='sps'):
     elif t_srs == 'll':
         srs.SetWellKnownGeogCS('WGS84')
     else:
-        print('Unrecognized coordinate reference system, defaulting to EPSG 3031')
+        print(
+            'Unrecognized coordinate reference system, defaulting to EPSG 3031')
         srs.ImportFromProj4(
             '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
     dst_ds.SetProjection(srs.ExportToWkt())
@@ -126,12 +127,17 @@ def mat2gtif_limits(fn, lowerleft, upperright, z, t_srs='sps'):
     elif t_srs == 'll':
         srs.SetWellKnownGeogCS('WGS84')
     else:
-        print('Unrecognized coordinate reference system, defaulting to EPSG 3031')
+        print(
+            'Unrecognized coordinate reference system, defaulting to EPSG 3031')
         srs.ImportFromProj4(
             '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
     dst_ds.SetProjection(srs.ExportToWkt())
-    dst_ds.SetGeoTransform([lowerleft[0], (upperright[0] - lowerleft[0]) / z.shape[
-                           0], 0, upperright[1], 0, (upperright[1] - lowerleft[1]) / z.shape[1]])
+    dst_ds.SetGeoTransform([lowerleft[0],
+                            (upperright[0] - lowerleft[0]) / z.shape[0],
+                            0,
+                            upperright[1],
+                            0,
+                            (upperright[1] - lowerleft[1]) / z.shape[1]])
 
 
 def gtif2mat(dst):
@@ -237,7 +243,9 @@ def mat2gridIn(fn, X, Y, z, zeroval=np.nan):
                         f.write('%9.1f %9.1f %9.5f\n' %
                                 (X[i], Y[-j - 1], z[-j - 1, i]))
         else:
-            print("Writing File for ElmerGrid\n Ignoring points with value %f" % zeroval)
+            print(
+                "Writing File for ElmerGrid\n Ignoring points with value %f" %
+                zeroval)
             for i in range(0, len(X)):
                 for j in range(0, len(Y)):
                     if not (z[-j - 1, i] == zeroval):
@@ -379,8 +387,9 @@ def dat2mat(fn, lines=True, threed=True, reg='davg', cd=3700):
         if lines:
             f.readline()
         mat = f.readlines()
-        data = np.empty(len(mat), dtype=[
-                        ('Node Number', int), ('x', float), ('y', float), ('z', float), ('dat', float)])
+        data = np.empty(
+            len(mat), dtype=[
+                ('Node Number', int), ('x', float), ('y', float), ('z', float), ('dat', float)])
         f.close()
         for i, line in enumerate(mat):
             data[i] = tuple(map(float, line.split()))
@@ -397,13 +406,20 @@ def dat2mat(fn, lines=True, threed=True, reg='davg', cd=3700):
         elif reg == 'bottom':
             data = get_bt_vars(data)
         else:
-            print('Region to return not understood. Try again with davg, top, or bottom')
+            print(
+                'Region to return not understood. Try again with davg, top, or bottom')
             return None
     mat = sparse2mat([data['x'], data['y'], data['dat']], cutoff_dist=cd)
     return mat
 
 
-def dat2gtif(dat_fn, gtif_fn=None, lines=True, threed=True, reg='davg', cd=3700):
+def dat2gtif(
+        dat_fn,
+        gtif_fn=None,
+        lines=True,
+        threed=True,
+        reg='davg',
+        cd=3700):
     if gtif_fn is None:
         direc, fn = os.path.split(dat_fn)
         gtif_fn = direc + '/' + os.path.splitext(fn)[0] + '.tif'
@@ -419,7 +435,13 @@ def sparse2xyz(fn, data, x_steps=500, y_steps=500, cutoff_dist=2000.0):
     mat2xyz(fn, mats[0], mats[1][::-1], mats[2][::-1, :])
 
 
-def sparse2xyz_and_tif(fn_xyz, data, fn_tif=None, x_steps=500, y_steps=500, cutoff_dist=2000.0):
+def sparse2xyz_and_tif(
+        fn_xyz,
+        data,
+        fn_tif=None,
+        x_steps=500,
+        y_steps=500,
+        cutoff_dist=2000.0):
     """Grid data, write to a tif and to an xyz file"""
     if fn_tif is None:
         fn, ext = os.path.splitext(fn_xyz)
@@ -464,7 +486,8 @@ def get_variables(variables, result_fn, apps=[2], maps=[], **kwargs):
             parts_dir = mesh_dir + '/../partitioning.' + str(parts)
             print(str(parts) + ' partition mesh found in ' + parts_dir)
         else:
-            print('There is no mesh with the given partitions, trying to find with other partitioning')
+            print(
+                'There is no mesh with the given partitions, trying to find with other partitioning')
             parts = None
     # try to figure out the number of partitions. Capped at 256.
     if parts is None:
@@ -533,8 +556,11 @@ def get_variables(variables, result_fn, apps=[2], maps=[], **kwargs):
 
             for L, var in enumerate(variables):
                 try:
-                    data[var][so_far:so_far + file_lens[i]] = list(map(
-                        float, dat[var_indices[L] + 2:var_indices[L] + 2 + file_lens[i]]))
+                    data[var][so_far:so_far +
+                              file_lens[i]] = list(map(float, dat[var_indices[L] +
+                                                                  2:var_indices[L] +
+                                                                  2 +
+                                                                  file_lens[i]]))
                     if maps is not None:
                         for mp in maps:
                             if mp[1] == L:
@@ -542,11 +568,17 @@ def get_variables(variables, result_fn, apps=[2], maps=[], **kwargs):
                                     eval(mp[0]), list(map(float, dat[var_indices[L] + 2:var_indices[L] + 2 + file_lens[i]]))))
                 except ValueError:
                     if i == 0:
-                        print('Variable \"' + var + '\" appears to be wonky, attempting to fetch regardless')
+                        print(
+                            'Variable \"' +
+                            var +
+                            '\" appears to be wonky, attempting to fetch regardless')
                     var_indices[L] = var_indices[L] + file_lens[i]
                     try:
-                        data[var][so_far:so_far + file_lens[i]] = list(map(
-                            float, dat[var_indices[L] + 2:var_indices[L] + 2 + file_lens[i]]))
+                        data[var][so_far:so_far +
+                                  file_lens[i]] = list(map(float, dat[var_indices[L] +
+                                                                      2:var_indices[L] +
+                                                                      2 +
+                                                                      file_lens[i]]))
                         if maps is not None:
                             for mp in maps:
                                 if mp[1] == L:
@@ -576,7 +608,8 @@ def get_td_variables(variables, result_fn, apps=[2], t=None, **kwargs):
             parts_dir = mesh_dir + '/../partitioning.' + str(parts)
             print(str(parts) + ' partition mesh found in ' + parts_dir)
         else:
-            print('There is no mesh with the given partitions, trying to find with other partitioning')
+            print(
+                'There is no mesh with the given partitions, trying to find with other partitioning')
             parts = None
     # try to figure out the number of partitions. Capped at 256.
     if parts is None:
@@ -629,22 +662,31 @@ def get_td_variables(variables, result_fn, apps=[2], t=None, **kwargs):
                 dat = f.readlines()
             times = [L for L, x in enumerate(dat) if 'Time' in x]
             if len(times) == 0:
-                print('This does not appear to be a time dependent file, going with steady state')
+                print(
+                    'This does not appear to be a time dependent file, going with steady state')
                 return get_variables(variables, result_fn, apps=[2], **kwargs)
         # get the actual time values if this is the first result file
             if i == 0:
                 real_times = np.zeros(len(times))
                 for k, time in enumerate(times):
                     real_times[k] = float(dat[time].split()[-1])
-                data = np.empty(
-                    sum(file_lens) * len(times), dtype=list(zip(varnames, types)))
+                data = np.empty(sum(file_lens) *
+                                len(times), dtype=list(zip(varnames, types)))
                 for k in range(len(times)):
                     data[
-                        k * sum(file_lens):(k + 1) * sum(file_lens)] = single_data
+                        k *
+                        sum(file_lens):(
+                            k +
+                            1) *
+                        sum(file_lens)] = single_data
                     data['Time Step'][
                         k * sum(file_lens):(k + 1) * sum(file_lens)] = k
                     data['Real Time'][
-                        k * sum(file_lens):(k + 1) * sum(file_lens)] = real_times[k]
+                        k *
+                        sum(file_lens):(
+                            k +
+                            1) *
+                        sum(file_lens)] = real_times[k]
 
             # get all the indices for each of the variables
             var_indices = [[] for L in variables]
@@ -663,15 +705,40 @@ def get_td_variables(variables, result_fn, apps=[2], t=None, **kwargs):
             for k, time in enumerate(times):
                 for L, var in enumerate(variables):
                     try:
-                        data[var][k * sum(file_lens) + so_far:k * sum(file_lens) + so_far + file_lens[
-                            i]] = [float(dat[var_indices[L][k] + 2 + j]) for j in range(file_lens[i])]
+                        data[var][
+                            k *
+                            sum(file_lens) +
+                            so_far:k *
+                            sum(file_lens) +
+                            so_far +
+                            file_lens[i]] = [
+                            float(
+                                dat[
+                                    var_indices[L][k] +
+                                    2 +
+                                    j]) for j in range(
+                                file_lens[i])]
                     except ValueError:
                         if i == 0:
-                            print('Variable \"' + var + '\" appears to be wonky, attempting to fetch regardless')
+                            print(
+                                'Variable \"' +
+                                var +
+                                '\" appears to be wonky, attempting to fetch regardless')
                         var_indices[L][k] = var_indices[L][k] + file_lens[i]
                         try:
-                            data[var][k * sum(file_lens) + so_far:k * sum(file_lens) + so_far + file_lens[
-                                i]] = [float(dat[var_indices[L][k] + 2 + j]) for j in range(file_lens[i])]
+                            data[var][
+                                k *
+                                sum(file_lens) +
+                                so_far:k *
+                                sum(file_lens) +
+                                so_far +
+                                file_lens[i]] = [
+                                float(
+                                    dat[
+                                        var_indices[L][k] +
+                                        2 +
+                                        j]) for j in range(
+                                    file_lens[i])]
                         except:
                             print('Failed to fetch')
                             return None
@@ -686,7 +753,8 @@ def get_bt_vars(data, bottom=True, nodes=False, varnames=None):
 
     # Do a quick check that we have the necessary variables
     if not set(('Node Number', 'x', 'y')).issubset(set(data.dtype.names)):
-        print('Not a valid dataset, does not contain Node Number, x, and y variables, returning None')
+        print(
+            'Not a valid dataset, does not contain Node Number, x, and y variables, returning None')
         return None
 
     # Try to get things right with what variables we are returning
@@ -696,7 +764,8 @@ def get_bt_vars(data, bottom=True, nodes=False, varnames=None):
             try:
                 varnames.remove('Node Number')
             except ValueError:
-                print('Could not find node variable to remove, returning whole matrix')
+                print(
+                    'Could not find node variable to remove, returning whole matrix')
     elif nodes:
         if not 'Node Number' in varnames:
             varnames.insert(0, 'Node Number')
@@ -720,7 +789,8 @@ def get_da_vars(data):
     """Pull depth averaged values from pointwise data list"""
     # Do a quick check that we have the necessary variables
     if not set(('Node Number', 'x', 'y')).issubset(set(data.dtype.names)):
-        print('Not a valid dataset, does not contain Node Number, x, and y variables, returning None')
+        print(
+            'Not a valid dataset, does not contain Node Number, x, and y variables, returning None')
         return None
     # Try to get things right with what variables we are returning
     varnames = list(data.dtype.names)
@@ -773,11 +843,25 @@ def fix_bot_node_numbers(data_mat, botfile_in, botfile_out=None):
 
 def bot_for_forward(mesh_dir, botfile_in, partitions=None):
     """Given a partition directory and file with bed elevation, make a file of bed elevation"""
-    a = fix_bot_node_numbers(get_bt_vars(get_variables(
-        [], mesh_dir + '/Test', partitions=partitions, apps=[]), nodes=True), botfile_in)
+    a = fix_bot_node_numbers(
+        get_bt_vars(
+            get_variables(
+                [],
+                mesh_dir +
+                '/Test',
+                partitions=partitions,
+                apps=[]),
+            nodes=True),
+        botfile_in)
     if a:
         print('Making bottom elevation file successful')
 
 
-def write_bottom_result(variables, result_fn, fn_out, nodes=False, apps=[2], **kwargs):
+def write_bottom_result(
+        variables,
+        result_fn,
+        fn_out,
+        nodes=False,
+        apps=[2],
+        **kwargs):
     pass
