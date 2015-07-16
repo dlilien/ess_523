@@ -53,19 +53,7 @@ class Equation:
         """
     # equations must override lin to be boolean and have a call method
 
-    def __init__(
-            self,
-            dofs=1,
-            lin=True,
-            ss_tolerance=1.0e-3,
-            relaxation=1.0,
-            nl_tolerance=1.0e-5,
-            guess=None,
-            nl_maxiter=50,
-            method='BiCGStab',
-            precond='LU',
-            lin_tolerance=1.0e-5,
-            max_nei=16):
+    def __init__(self, dofs=1, lin=True, ss_tolerance=1.0e-3, relaxation=1.0, nl_tolerance=1.0e-5, guess=None, nl_maxiter=50, method='BiCGStab', precond='LU', lin_tolerance=1.0e-5, max_nei=16):
         self.dofs = dofs
         self.lin = lin
         self.ss_tolerance = ss_tolerance
@@ -88,7 +76,7 @@ class Equation:
         The :py:meth:`__call__` method must take four positional arguments (which are probably needed for any finite element solution) and should probably also accept one keyword arguments which are generally needed.
         Additional arguments can be passed as kwargs. The parent mesh can be accessed via :py:attr:`Element.parent`.
         The required/suggested arguments, and required returns are:
-
+        
         Parameters
         ----------
         node1 : int
@@ -137,14 +125,7 @@ class area(Equation):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def __call__(
-            self,
-            node1,
-            node2,
-            elements,
-            max_nei=8,
-            rhs=False,
-            kwargs={}):
+    def __call__(self, node1, node2, elements, max_nei=8, rhs=False, kwargs={}):
         """This is really just for testing. Calculate area"""
         return np.sum([elm[1].area for elm in elements])
 
@@ -201,12 +182,7 @@ class advectionDiffusion(Equation):
 
         """
         if 'k' in kwargs:
-            if isinstance(
-                kwargs['k'](
-                    elements[0][1].F(
-                        elements[0][1].gpoints[0][
-                    1:])),
-                    float):
+            if type(kwargs['k'](elements[0][1].F(elements[0][1].gpoints[0][1:]))) == float:
                 k = lambda x: kwargs['k'] * np.array([1.0, 1.0])
             else:
                 k = kwargs['k']
@@ -223,10 +199,8 @@ class advectionDiffusion(Equation):
         for i, elm in enumerate(elements):
             n1b = elm[1].nodes.index(node1)
             n2b = elm[1].nodes.index(node2)
-            ints[i] = elm[1].area * np.sum([gp[0] * (np.dot(np.r_[elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0],
-                                                                  elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]].flatten(),
-                                                            k(elm[1].F(gp[1:]))) + np.dot(np.r_[elm[1].dbases[n1b]].flatten(),
-                                                                                          elm[1].bases[n2b](elm[1].F(gp[1:])) * v(elm[1].F(gp[1:])))) for gp in elm[1].gpoints])
+            ints[i] = elm[1].area * np.sum([gp[0] * (np.dot(np.r_[elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0], elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]].flatten(), k(elm[1].F(gp[1:]))) +
+                                                     np.dot(np.r_[elm[1].dbases[n1b]].flatten(), elm[1].bases[n2b](elm[1].F(gp[1:])) * v(elm[1].F(gp[1:])))) for gp in elm[1].gpoints])
         if rhs:
             if 'f' in kwargs:
                 f = kwargs['f']
@@ -255,7 +229,7 @@ class shallowShelf(Equation):
     Keyword Arguments
     -----------------
     b : float
-       The value of the friction coefficient. Can be a float a function. I use elemental average values, but interpolate onto the nodes.
+       The value of the friction coefficient. Can be a float a function. I use elemental average values, but interpolate onto the nodes. 
     thickness : function
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
@@ -277,10 +251,10 @@ class shallowShelf(Equation):
             self.thickness = None
         super().__init__(dofs=2, lin=False, **kwargs)
         self.name = 'Shallow Shelf'
-        if not isinstance(g, float):
+        if not type(g) == float:
             raise TypeError('Gravity must be a float')
         self.g = g
-        if not isinstance(rho, float):
+        if not type(rho) == float:
             raise TypeError('Density of ice must be a float')
         self.rho = rho
         self.b = b
@@ -301,7 +275,7 @@ class shallowShelf(Equation):
            A of elements, as 2-tuples of (element_number,:py:class:`meshes.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
-        max_nei : int,optional
+        max_nei : int,optional 
            The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
 
         Keyword Arguments
@@ -351,7 +325,8 @@ class shallowShelf(Equation):
             # thickness being passed gets precedence
             if 'thickness' in kwargs:
                 elm[1].h = 2 * \
-                    np.sum([gp[0] * (kwargs['thickness'](gp[1])) for gp in elm[1].gpts])
+                    np.sum([gp[0] * (kwargs['thickness'](gp[1]))
+                            for gp in elm[1].gpts])
 
             # For first time through if constant thickness
             if not 'h' in elm[1].phys_vars:
@@ -390,30 +365,10 @@ class shallowShelf(Equation):
                     elm[1].phys_vars['dzs'][1] * elm[1].area
 
             # return with rhs
-            return np.sum(
-                ints[
-                    :, 0]), np.sum(
-                ints[
-                    :, 1]), np.sum(
-                ints[
-                    :, 2]), np.sum(
-                ints[
-                    :, 3]), np.sum(
-                ints_rhs[
-                    :, 0]), np.sum(
-                ints_rhs[
-                    :, 1])
+            return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3]), np.sum(ints_rhs[:, 0]), np.sum(ints_rhs[:, 1])
 
         # return if rhs is false
-        return np.sum(
-            ints[
-                :, 0]), np.sum(
-            ints[
-                :, 1]), np.sum(
-                    ints[
-                        :, 2]), np.sum(
-                            ints[
-                                :, 3])
+        return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3])
 
 
 class ssaAdjointBeta(Equation):
@@ -464,7 +419,7 @@ class ssaAdjointBeta(Equation):
            A of elements, as 2-tuples of (element_number,:py:class:`meshes.Element`), which are shared in common between the two nodes.
         rhs : bool
            If True, return a value for the right-hand side of the matrix equation as well. This is necessary to get the returns correct. In general, the right hand side portion will likely be a straightforward integration of the basis function for node1 against the source term.
-        max_nei : int,optional
+        max_nei : int,optional 
            The amount of space to allocate for the element-wise integrals, should be the largest number of neighbors any node has times the number of degrees of freedom. Recommended default between 12 and 24.
 
         Keyword Arguments
@@ -510,7 +465,8 @@ class ssaAdjointBeta(Equation):
             # thickness being passed gets precedence
             if 'thickness' in kwargs:
                 elm[1].h = 2 * \
-                    np.sum([gp[0] * (kwargs['thickness'](gp[1])) for gp in elm[1].gpts])
+                    np.sum([gp[0] * (kwargs['thickness'](gp[1]))
+                            for gp in elm[1].gpts])
 
             # For first time through if constant thickness
             if not 'h' in elm[1].phys_vars:
@@ -542,36 +498,14 @@ class ssaAdjointBeta(Equation):
             ints_rhs = np.zeros((self.max_nei, 2))
             for i, elm in enumerate(elements):
                 # 1st SSA eqn (d/dx) rhs
-                ints_rhs[
-                    i,
-                    0] = elm[1].phys_vars['u_d'] - elm[1].phys_vars['u']
+                ints_rhs[i, 0] = elm[1].phys_vars[
+                    'u_d'] - elm[1].phys_vars['u']
                 # 2nd SSA eqn (d/dy) rhs
-                ints_rhs[
-                    i,
-                    1] = elm[1].phys_vars['v_d'] - elm[1].phys_vars['v']
+                ints_rhs[i, 1] = elm[1].phys_vars[
+                    'v_d'] - elm[1].phys_vars['v']
 
             # return with rhs
-            return np.sum(
-                ints[
-                    :, 0]), np.sum(
-                ints[
-                    :, 1]), np.sum(
-                ints[
-                    :, 2]), np.sum(
-                ints[
-                    :, 3]), np.sum(
-                ints_rhs[
-                    :, 0]), np.sum(
-                ints_rhs[
-                    :, 1])
+            return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3]), np.sum(ints_rhs[:, 0]), np.sum(ints_rhs[:, 1])
 
         # return if rhs is false
-        return np.sum(
-            ints[
-                :, 0]), np.sum(
-            ints[
-                :, 1]), np.sum(
-                    ints[
-                        :, 2]), np.sum(
-                            ints[
-                                :, 3])
+        return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3])

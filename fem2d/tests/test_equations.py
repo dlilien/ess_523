@@ -22,11 +22,7 @@ class TestEqautions(unittest.TestCase):
         mo = Model(path.join(path.split(__file__)[0], 'test_lib/testmesh.msh'))
         mo.add_equation(diffusion())
         mo.add_BC('dirichlet', 1, lambda x: 10.0)
-        mo.add_BC(
-            'neumann',
-            2,
-            lambda x: -
-            1.0)  # 'dirichlet',2,lambda x: 10.0)
+        mo.add_BC('neumann', 2, lambda x: -1.0)
         mo.add_BC('dirichlet', 3, lambda x: abs(x[1] - 5.0) + 5.0)
         mo.add_BC('neumann', 4, lambda x: 0.0)
         m = mo.makeIterate()
@@ -34,10 +30,8 @@ class TestEqautions(unittest.TestCase):
         self.assertTrue(True)
 
     def test_advection_diffusion(self):
-        admo = Model(
-            path.join(
-                path.split(__file__)[0],
-                'test_lib/testmesh.msh'))
+        admo = Model( 
+                path.join(path.split(__file__)[0], 'test_lib/testmesh.msh'))
         admo.add_equation(advectionDiffusion())
         admo.add_BC('dirichlet', 1, lambda x: 15.0)
         # 'dirichlet',2,lambda x: 10.0)

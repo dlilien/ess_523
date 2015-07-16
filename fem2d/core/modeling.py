@@ -468,12 +468,13 @@ class ModelIterate:
                 # Do the diagonal element
                 rows[nnz] = i - 1
                 cols[nnz] = i - 1
-                data[nnz], rhs[
-                    i - 1] = self.eqn(
-                    i, i, [
-                        (elm[0], self.mesh.elements[
-                            elm[0]]) for elm in node1.ass_elms if self.mesh.elements[
-                            elm[0]].eltypes == 2], rhs=True, **kwargs)
+                data[nnz], rhs[i - 1] = self.eqn(
+                    i,
+                    i, 
+                    [(elm[0], self.mesh.elements[elm[0]])
+                        for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes == 2],
+                    rhs=True,
+                    **kwargs)
                 nnz += 1
 
                 for j, node2_els in node1.neighbors.items():
@@ -529,15 +530,13 @@ class ModelIterate:
 
                 # Lazy, no checking for correct return from equation but so it
                 # goes
-                data[nnz], data[
-                    nnz + 1], data[
-                    nnz + 2], data[
-                    nnz + 3], rhs[
-                    i - 1], rhs[i] = self.eqn(
-                    i, i, [
-                        (elm[0], self.mesh.elements[
-                            elm[0]]) for elm in node1.ass_elms if self.mesh.elements[
-                                elm[0]].eltypes == 2], rhs=True, **kwargs)
+                data[nnz], data[nnz + 1], data[nnz + 2], data[nnz + 3], rhs[i - 1], rhs[i] = self.eqn(
+                        i,
+                        i,
+                        [(elm[0], self.mesh.elements[elm[0]]) 
+                            for elm in node1.ass_elms if self.mesh.elements[elm[0]].eltypes == 2],
+                        rhs=True,
+                        **kwargs)
 
                 # increment things
                 nnz += 4
@@ -695,24 +694,17 @@ class ModelIterate:
                                         self.rhs[node - 1] = self.rhs[node - 1] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1]), time) * self.mesh.elements[
                                                                                          el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                     else:
-                                        self.rhs[
-                                            node - 1] = self.rhs[
-                                            node - 1] - np.sum(
-                                            [
-                                                self.mesh.elements[el].length * gpt[0] * (
-                                                    np.dot(
-                                                        function(
-                                                            self.mesh.elements[el].F(
-                                                                gpt[
-                                                                    1:-1]), time), self.elements[el].normal)) * self.mesh.elements[el].bases[
-                                                    self.mesh.elements[el].nodes.index(node)](
+                                        self.rhs[node - 1] = self.rhs[node - 1] - np.sum([self.mesh.elements[el].length * gpt[0]
+                                                * np.dot(function(
                                                     self.mesh.elements[el].F(
-                                                        gpt[
-                                                            1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                                        gpt[1: -1]), time),
+                                                    self.elements[el].normal)
+                                                * self.mesh.elements[el].bases[
+                                                    self.mesh.elements[el].nodes.index(node)](
+                                                    self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                 else:
                                     if normal:
-                                        self.rhs[node - 1] = self.rhs[node - 1] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1])) * self.mesh.elements[
-                                                                                         el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        self.rhs[node - 1] = self.rhs[node - 1]- np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1])) * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
                                     else:
                                         self.rhs[
                                             node - 1] = self.rhs[
@@ -796,15 +788,11 @@ class ModelIterate:
             for node in edge_nodes:
                 self.matrix[node - 1, node - 1] = 1.0
                 if time is not None:
-                    self.rhs[
-                        node -
-                        1] = function(
+                    self.rhs[node - 1] = function(
                         self.mesh.nodes[node].coords(),
                         time)
                 else:
-                    self.rhs[
-                        node -
-                        1] = function(
+                    self.rhs[node -1] = function(
                         self.mesh.nodes[node].coords())
                 # Get the neighboring nodes
                 for j in self.mesh.nodes[node].neighbors.keys():
@@ -890,11 +878,11 @@ class ModelIterate:
                 p = spilu(self.matrix, drop_tol=1.0e-5)
                 M_x = lambda x: p.solve(x)
                 M = LinearOperator(
-                    (self.mesh.numnodes *
-                     self.eqn.dofs,
-                     self.mesh.numnodes *
-                     self.eqn.dofs),
-                    M_x)
+                            (self.mesh.numnodes *
+                             self.eqn.dofs,
+                             self.mesh.numnodes *
+                             self.eqn.dofs),
+                         M_x)
             elif self.eqn.precond is not None:
                 M = self.eqn.precond
         if self.eqn.method == 'CG':
@@ -952,9 +940,7 @@ class ModelIterate:
         y_steps=20,
         cutoff=5,
         savesol=False,
-        figsize=(
-            15,
-            10)):
+        figsize=(15,10)):
         """ Plot the solution to the differential equation
 
         Parameters
@@ -1000,14 +986,15 @@ class ModelIterate:
             if threeD:
                 ax = fig.add_subplot(111, projection='3d')
                 ax.plot_trisurf(
-                    self.mesh.coords[
-                        :, 0], self.mesh.coords[
-                        :, 1], Z=self.sol, cmap=cm.jet)
+                    self.mesh.coords[:, 0],
+                    self.mesh.coords[:, 1],
+                    Z=self.sol,
+                    cmap=cm.jet)
             else:
-                ctr = plt.contourf(*
-                                   mat_sol, levels=np.linspace(0.9 *
-                                                               min(self.sol), 1.1 *
-                                                               max(self.sol), 50))
+                ctr = plt.contourf(
+                        *mat_sol,
+                        levels=np.linspace(
+                            0.9 * min(self.sol), 1.1 * max(self.sol), 50))
                 plt.colorbar(ctr)
             if savefig is not None:
                 plt.savefig(savefig)
@@ -1039,9 +1026,10 @@ class ModelIterate:
                 if threeD:
                     ax = fig.add_subplot(111, projection='3d')
                     ax.plot_trisurf(
-                        self.mesh.coords[
-                            :, 0], self.mesh.coords[
-                            :, 1], Z=ms, cmap=cm.jet)
+                        self.mesh.coords[:, 0],
+                        self.mesh.coords[:, 1],
+                        Z=ms,
+                        cmap=cm.jet)
                 else:
                     ctr = plt.contourf(mat_sol[0], mat_sol[1], ms, levels=np.linspace(
                         0.9 * min(self.sol), 1.1 * max(self.sol), 50))
@@ -1080,19 +1068,13 @@ class ModelIterate:
         if self.eqn.dofs == 1:
             data = self.sol
             tx = np.linspace(
-                np.min(
-                    np.array(
-                        coords[
-                            :, 0])), np.max(
-                    np.array(
-                        coords[
-                            :, 0])), x_steps)
+                np.min(np.array(coords[:, 0])), 
+                np.max(np.array(coords[:, 0])),
+                x_steps)
             ty = np.linspace(
-                np.min(
-                    coords[
-                        :, 1]), np.max(
-                    coords[
-                        :, 1]), y_steps)
+                np.min(coords[:, 1]), 
+                np.max(coords[:, 1]),
+                y_steps)
             XI, YI = np.meshgrid(tx, ty)
             ZI = griddata(coords, data, (XI, YI), method='linear')
             tree = KDTree(coords)
@@ -1105,19 +1087,13 @@ class ModelIterate:
             data1 = self.sol[::2]
             data2 = self.sol[1::2]
             tx = np.linspace(
-                np.min(
-                    np.array(
-                        coords[
-                            :, 0])), np.max(
-                    np.array(
-                        coords[
-                            :, 0])), x_steps)
+                np.min(np.array(coords[:, 0])),
+                np.max( np.array(coords[:, 0])),
+                x_steps)
             ty = np.linspace(
-                np.min(
-                    coords[
-                        :, 1]), np.max(
-                    coords[
-                        :, 1]), y_steps)
+                np.min(coords[:, 1]),
+                np.max(coords[:, 1]),
+                y_steps)
             XI, YI = np.meshgrid(tx, ty)
             ZI = griddata(coords, data1, (XI, YI), method='linear')
             ZI2 = griddata(coords, data2, (XI, YI), method='linear')
@@ -1269,9 +1245,7 @@ class NonLinearModel:
             cutoff=7000,
             savesol=False,
             vel=False,
-            figsize=(
-                15,
-                10),
+            figsize=(15,10),
             clims=None):
         """ Plot the resulting nonlinear solution.
 
@@ -1376,10 +1350,10 @@ class NonLinearModel:
                     if threeD:
                         ax = fig.add_subplot(111, projection='3d')
                         ax.plot_trisurf(
-                            self.model.mesh.coords[
-                                :, 0], self.model.mesh.coords[
-                                :, 1], Z=self.sol[
-                                i::2], cmap=cm.jet)
+                            self.model.mesh.coords[:, 0],
+                            self.model.mesh.coords[:, 1],
+                            Z=self.sol[i::2],
+                            cmap=cm.jet)
                     else:
                         ctr = plt.contourf(mat_sol[0], mat_sol[1], ms, levels=np.linspace(
                             0.9 * min(self.sol[i::2]), 1.1 * max(self.sol[i::2]), 50))
@@ -1392,17 +1366,9 @@ class NonLinearModel:
                 if threeD:
                     ax = fig.add_subplot(111, projection='3d')
                     ax.plot_trisurf(
-                        self.model.mesh.coords[
-                            :,
-                            0],
-                        self.model.mesh.coords[
-                            :,
-                            1],
-                        Z=np.sqrt(
-                            self.sol[
-                                0::2]**2 +
-                            self.sol[
-                                1::2]**2),
+                        self.model.mesh.coords[:, 0],
+                        self.model.mesh.coords[:, 1],
+                        Z=np.sqrt( self.sol[0::2]**2 + self.sol[1::2]**2),
                         cmap=cm.jet)
                 else:
                     ctr = plt.contourf(
@@ -1465,19 +1431,13 @@ class NonLinearModel:
                 data1 = self.sol[::2]
                 data2 = self.sol[1::2]
                 tx = np.linspace(
-                    np.min(
-                        np.array(
-                            coords[
-                                :, 0])), np.max(
-                        np.array(
-                            coords[
-                                :, 0])), x_steps)
+                    np.min(np.array(coords[:, 0])), 
+                    np.max(np.array(coords[:, 0])),
+                    x_steps)
                 ty = np.linspace(
-                    np.min(
-                        coords[
-                            :, 1]), np.max(
-                        coords[
-                            :, 1]), y_steps)
+                    np.min(coords[:, 1]),
+                    np.max(coords[:, 1]), 
+                    y_steps)
                 XI, YI = np.meshgrid(tx, ty)
                 ZI = griddata(coords, data1, (XI, YI), method='linear')
                 ZI2 = griddata(coords, data2, (XI, YI), method='linear')
@@ -1714,9 +1674,7 @@ class TimeDependentModel:
         y_steps=20,
         cutoff=5,
         savesol=False,
-        figsize=(
-            15,
-            10)):
+        figsize=(15, 10)):
         """ Plot the solution at a some poduring the run
 
         For parameter options see :py:meth:`ModelIterate.plotSolution`. In addition, supports
@@ -1740,10 +1698,8 @@ class TimeDependentModel:
                     :, 0], self.model.mesh.coords[
                     :, 1], Z=self.sol[iterate], cmap=cm.jet)
         else:
-            ctr = plt.contourf(*
-                               mat_sol, levels=np.linspace(0.9 *
-                                                           min(self.sol), 1.1 *
-                                                           max(self.sol[iterate]), 50))
+            ctr = plt.contourf(*mat_sol, 
+                    levels=np.linspace(0.9 * min(self.sol), 1.1 * max(self.sol[iterate]), 50))
             plt.colorbar(ctr)
         if savefig is not None:
             plt.savefig(savefig)
@@ -1790,10 +1746,10 @@ class TimeDependentModel:
                     [min(self.outer.model.mesh.coords[:, 1]), max(self.outer.model.mesh.coords[:, 1])])
                 # ax.set_zlim3d([0.9*min(self.outer.sol[0]),1.1*max(self.outer.sol[0])])
                 return ax.plot_trisurf(
-                    self.outer.model.mesh.coords[
-                        :, 0], self.outer.model.mesh.coords[
-                        :, 1], Z=self.outer.sol[
-                        self.iterate - 1], cmap=cm.jet)
+                    self.outer.model.mesh.coords[:, 0], 
+                    self.outer.model.mesh.coords[:, 1], 
+                    Z=self.outer.sol[self.iterate - 1],
+                    cmap=cm.jet)
         np = nextPlot(self)
         an = mpl_an.FuncAnimation(
             fig,
@@ -1830,13 +1786,9 @@ class TimeDependentModel:
         coords = self.model.mesh.coords
         data = self.sol[iterate]
         tx = np.linspace(
-            np.min(
-                np.array(
-                    coords[
-                        :, 0])), np.max(
-                np.array(
-                    coords[
-                        :, 0])), x_steps)
+            np.min(np.array(coords[:, 0])), 
+            np.max(np.array(coords[:, 0])),
+            x_steps)
         ty = np.linspace(np.min(coords[:, 1]), np.max(coords[:, 1]), y_steps)
         XI, YI = np.meshgrid(tx, ty)
         ZI = griddata(coords, data, (XI, YI), method='linear')

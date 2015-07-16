@@ -177,14 +177,10 @@ class TriangElement(Element):
     """
     kind = 'Triangular'
     eltypes = 2
-    gpoints = [[-
-                27.0 /
-                96.0, 1.0 /
-                3.0, 1.0 /
-                3.0], [25.0 /
-                       96.0, 0.2, 0.6], [25.0 /
-                                         96.0, 0.6, 0.2], [25.0 /
-                                                           96.0, 0.2, 0.2]]  # gauss points with weights for parent element
+    gpoints = [[-27.0 / 96.0, 1.0 / 3.0, 1.0 / 3.0],
+                 [25.0 / 96.0, 0.2, 0.6],
+                 [25.0 / 96.0, 0.6, 0.2],
+                 [25.0 /96.0, 0.2, 0.2]]
 
     def _F(self):
         """Right triangle to element mapping"""
@@ -203,14 +199,13 @@ class TriangElement(Element):
         """Map from element to right triangle at origin"""
         if self.Finv is None:
             ps = self.xyvecs()
-            self.area = abs((ps[1][0] - ps[0][0]) * (ps[2][1] - ps[0]
-                                                     [1]) - (ps[2][0] - ps[0][0]) * (ps[1][1] - ps[0][1])) / 2.0
-            self.Finv = lambda p: solve(np.array([[ps[1][0] -
-                                                   ps[0][0], ps[2][0] -
-                                                   ps[0][0]], [ps[1][1] -
-                                                               ps[0][1], ps[2][1] -
-                                                               ps[0][1]]]), np.array(p).reshape(len(p), 1) -
-                                        np.array([[ps[0][0]], [ps[0][1]]]))
+            self.area = abs((ps[1][0] - ps[0][0]) * (ps[2][1] - ps[0][1]) 
+                           - (ps[2][0] - ps[0][0]) * (ps[1][1] - ps[0][1])) / 2.0
+            self.Finv = lambda p: solve(
+                    np.array([[ps[1][0] - ps[0][0], ps[2][0] - ps[0][0]],
+                                [ps[1][1] - ps[0][1], ps[2][1] - ps[0][1]]]),
+                    np.array(p).reshape(len(p), 1) 
+                        - np.array([[ps[0][0]], [ps[0][1]]]))
         return self.Finv
 
     def _normal(self):
@@ -273,13 +268,18 @@ class TriangElement(Element):
 
     def _dbases(self):
         pts = self.xyvecs()
-        self.dbases = [[self.bases[0](np.array(pts[1]).reshape(len(pts[0]), 1) +
-                                      np.array([[1.0], [0.0]])), self.bases[0](np.array(pts[1]).reshape(len(pts[0]), 1) +
-                                                                               np.array([[0.0], [1.0]]))], [self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                          np.array([[1.0], [0.0]])), self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                                                                   np.array([[0.0], [1.0]]))], [self.bases[2](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                                                                                                              np.array([[1.0], [0.0]])), self.bases[2](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                                                                                                                                                       np.array([[0.0], [1.0]]))]]
+        self.dbases = [[self.bases[0](np.array(pts[1]).reshape(len(pts[0]), 1)
+                            + np.array([[1.0], [0.0]])), 
+                        self.bases[0](np.array(pts[1]).reshape(len(pts[0]), 1) 
+                            + np.array([[0.0], [1.0]]))], 
+                        [self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1) 
+                            + np.array([[1.0], [0.0]])), 
+                         self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1)
+                            + np.array([[0.0], [1.0]]))],
+                         [self.bases[2](np.array(pts[0]).reshape(len(pts[0]), 1) 
+                            + np.array([[1.0], [0.0]])),
+                          self.bases[2](np.array(pts[0]).reshape(len(pts[0]), 1) 
+                            + np.array([[0.0], [1.0]]))]]
         return self.dbases
 
 
@@ -298,18 +298,14 @@ class LineElement(Element):
         if self.F is None:
             ps = self.xyvecs()
             self.F = lambda p: np.array(
-                [ps[0][0] + p[0] * (ps[1][0] - ps[0][0]), ps[0][1] + p[0] * (ps[1][1] - ps[0][1])])
+                [ps[0][0] + p[0] * (ps[1][0] - ps[0][0]),
+                 ps[0][1] + p[0] * (ps[1][1] - ps[0][1])])
         return self.F
 
     def _Finv(self):
         pts = self.xyvecs()
-        return lambda p: np.array([[pts[0][0] +
-                                    (pts[0][0] -
-                                     pts[1][0]) *
-                                    p[0]], [pts[0][1] +
-                                            (pts[0][1] -
-                                             pts[1][1]) *
-                                            p[0]]])
+        return lambda p: np.array([[pts[0][0] + (pts[0][0] - pts[1][0]) * p[0]], 
+                                    [pts[0][1] + (pts[0][1] - pts[1][1]) * p[0]]])
 
     def _b2(self, pts):
         if pts[1][0] == pts[0][0]:
@@ -337,11 +333,14 @@ class LineElement(Element):
 
     def _dbases(self):
         pts = self.xyvecs()
-        self.dbases = [[self.bases[0](np.array(pts[1]).reshape(len(pts[1]), 1) +
-                                      np.array([[1.0], [0.0]])), self.bases[0](np.array(pts[1]).reshape(len(pts[1]), 1) +
-                                                                               np.array([[0.0], [1.0]]))], [self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                          np.array([[1.0], [0.0]])), self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1) +
-                                                                                                                                                                   np.array([[0.0], [1.0]]))]]
+        self.dbases = [[self.bases[0](np.array(pts[1]).reshape(len(pts[1]), 1)
+                            + np.array([[1.0], [0.0]])),
+                        self.bases[0](np.array(pts[1]).reshape(len(pts[1]), 1)
+                            + np.array([[0.0], [1.0]]))],
+                       [self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1)
+                            + np.array([[1.0], [0.0]])), 
+                        self.bases[1](np.array(pts[0]).reshape(len(pts[0]), 1)
+                            + np.array([[0.0], [1.0]]))]]
         return self.dbases
 
     def _normal(self):
@@ -417,19 +416,13 @@ class Mesh:
             return False
         self.numels = int(flines[self.numnodes + 7])
         self.elements = {
-            int(
-                line[0]): Element.init_element_gmsh(
-                list(
-                    map(
-                        int,
-                        line)),
-                parent=self) for line in map(
-                str.split,
-                flines[
-                    (8 +
-                     self.numnodes):(
-                        8 +
-                        self.numnodes +
+                int(line[0]):
+                Element.init_element_gmsh(
+                    list(map(int,line)),
+                    parent=self)
+                for line in map(str.split,flines[
+                    (8 + self.numnodes):
+                    (8 + self.numnodes +
                         self.numels)])}
         for key in list(self.elements.keys()):
             for attr in ['eltypes', 'physents', 'geoents', 'npartits']:
