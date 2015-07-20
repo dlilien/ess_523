@@ -204,11 +204,7 @@ def visc(du, dv, af, n=3.0, critical_shear_rate=1.0e-9, units='MPaA'):
 
     strainRate = float(du[0]**2.0 +
                        dv[1]**2.0 +
-                       0.25 *
-                       (du[1] +
-                        dv[0])**2.0 +
-                       du[0] *
-                       dv[1])
+                       0.25 *(du[1] + dv[0])**2.0 + du[0] * dv[1])
     if critical_shear_rate is not None:
         if strainRate < critical_shear_rate:
             strainRate = critical_shear_rate

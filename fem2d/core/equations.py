@@ -340,12 +340,20 @@ class shallowShelf(Equation):
                     raise AttributeError('No thickness found')
 
             # indices based on a 2x2 submatrix of A for i,j
-            # 1,1
-            ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
-                4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
-            # 2,2
-            ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
-                4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
+            if node1==node2:
+                # 1,1
+                ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                    4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
+                # 2,2
+                ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                    4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
+            else:
+                # 1,1
+                ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                    4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
+                # 2,2
+                ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                    4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
             # 1,2
             ints[i, 2] = elm[1].area * (elm[1].phys_vars['nu'] * elm[1].phys_vars['h'] * (
                 2 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0]))
@@ -358,10 +366,10 @@ class shallowShelf(Equation):
             ints_rhs = np.zeros((self.max_nei, 2))
             for i, elm in enumerate(elements):
                 # 1st SSA eqn (d/dx) rhs
-                ints_rhs[i, 0] = self.rho * self.g * elm[1].phys_vars['h'] * \
+                ints_rhs[i, 0] = - self.rho * self.g * elm[1].phys_vars['h'] * \
                     elm[1].phys_vars['dzs'][0] * elm[1].area
                 # 2nd SSA eqn (d/dy) rhs
-                ints_rhs[i, 1] = self.rho * self.g * elm[1].phys_vars['h'] * \
+                ints_rhs[i, 1] = - self.rho * self.g * elm[1].phys_vars['h'] * \
                     elm[1].phys_vars['dzs'][1] * elm[1].area
 
             # return with rhs

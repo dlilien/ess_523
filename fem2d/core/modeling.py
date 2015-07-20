@@ -1210,7 +1210,7 @@ class NonLinearModel:
                 else:
                     relchange = np.linalg.norm(
                         new - old) / np.sqrt(float(self.model.mesh.numnodes))
-                print('Relative Change: {:f}'.format(relchange))
+                print('Relative Change: {:e}'.format(relchange))
 
                 # Check if we converged
                 if relchange < self.eqn.nl_tolerance and i != 0:
