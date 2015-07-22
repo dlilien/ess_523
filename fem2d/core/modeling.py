@@ -133,9 +133,7 @@ class Model:
             self,
             eqn,
             name=None,
-            number=None,
-            before_all=False,
-            after_all=False):
+            execute=None):
         """Add the equation to be solved
 
         Parameters
@@ -161,9 +159,7 @@ class Model:
         self.eqn.setitem(
             name,
             eqn,
-            number=number,
-            before_all=before_all,
-            after_all=after_all,
+            execute=execute,
             diffEQ=True)
         return None
 
@@ -171,9 +167,7 @@ class Model:
             self,
             fnctn,
             name='Dummy',
-            number=None,
-            before_all=False,
-            after_all=False):
+            execute=None):
         """Add a function to be called
 
         Parameters
@@ -192,9 +186,7 @@ class Model:
         self.eqn.setitem(
             name,
             fnctn,
-            number=number,
-            before_all=before_all,
-            after_all=after_all,
+            execute=execute,
             diffEQ=False)
         return None
 
@@ -322,9 +314,27 @@ class Dummy:
 
 
 class eqnlist:
+    """ The list of equations associated with this model.
+
+    Attributes
+    ----------
+    mainDict : dict
+        keys are the equation names and values are the equation/function objects
+    dummies : dict
+        These never execute. Formatted the same as mainDict.
+    keyPairs : list of tuples
+        tuples of (number, value)
+    numbers : list
+        list of equation numbers used
+    f_numbers : list
+        The numbers which correspond to functions
+    de_numbers : list
+        The numbers which correspond to differential equaitons
+    """
 
     def __init__(self):
-        self.mainDict = {}
+        self.mainDict = {} # Hold all executed equation
+        self.dummies = {} # Will hold equations that execute never
         self.keyPairs = []
         self.numbers = []
         self.f_numbers = []
@@ -338,7 +348,13 @@ class eqnlist:
             except IndexError:
                 raise KeyError('Key number does not exist')
         elif isinstance(key, str):
-            return self.mainDict[key]
+            try:
+                return self.mainDict[key]
+            except KeyError:
+                try:
+                    return self.dummies[key]
+                except KeyError:
+                    raise KeyError('equation not found in either called or uncalled equations')
 
     def __len__(self):
         return len(self.numbers)
@@ -347,9 +363,7 @@ class eqnlist:
             self,
             key,
             value,
-            number=None,
-            before_all=False,
-            after_all=False,
+            execute=None,
             diffEQ=True):
         """Number overrides before/after all
 
@@ -361,23 +375,32 @@ class eqnlist:
         """
         if not isinstance(key, str):
             raise TypeError('Key', key, 'must be a string')
-        if number is not None:
-            if number in self.numbers:
+        if type(execute) == int:
+            if execute in self.numbers:
                 raise AttributeError(
                     'Cannot overwrite existing equation number')
-        elif before_all:
-            number = -1
-            while number in self.numbers:
-                number -= 1
-        elif after_all:
-            number = 1000
-            while number in self.numbers:
-                number += 1
-        else:
+        elif type(execute) == str:
+            if execute == 'before_all':
+                number = -1
+                while number in self.numbers:
+                    number -= 1
+            elif execute == 'after_all':
+                number = 1000
+                while number in self.numbers:
+                    number += 1
+            elif execute == 'never':
+                number=None
+                self.dummies[key]=value
+                return
+            else:
+                raise ValueError('String for execute must be before_all, after_all, or never')
+        elif execute is None:
             if len(self.numbers) == 0:
                 number = 0
             else:
                 number = max(key for key in self.numbers if key < 1000) + 1
+        else:
+            raise TypeError('Need a string or integer for the execute command')
         self.mainDict[key] = value
         self.keyPairs.append((number, key))
         self.numbers.append(number)
@@ -1233,6 +1256,66 @@ class NonLinearModel:
                     'You aborted before first iterate finished')
         return {self.eqn_name: new}
 
+    def getvar(self, target, nodewise=True):
+        if target is not None:
+            if nodewise:
+                coords = self.model.mesh.coords
+                if target is not None:
+                    if target in self.vars:
+                        sol = self.model.vars[target]
+                    else:
+                        sol = np.zeros(self.model.mesh.numnodes)
+                        for node in self.model.mesh.nodes:
+                            try:
+                                sol[node.id] = getattr(node, target)
+                            except AttributeError:
+                                raise AttributeError(
+                                    'Neither model nor nodes has desired variable')
+            else:
+                # Elementwise
+                tri_els = self.model.mesh.eltypes[2]
+                coords = np.zeros([len(tri_els), 2])
+                if isinstance(
+                        self.model.mesh.elements[
+                            tri_els[0]].phys_vars[target],
+                        float) or isinstance(
+                        self.model.mesh.elements[
+                        tri_els[0]].phys_vars[target],
+                        np.float64):
+
+                    sol = np.zeros(len(tri_els))
+                    for i, element in enumerate(tri_els):
+                        coords[i, :] = self.model.mesh.elements[element].cent
+                        sol[i] = self.model.mesh.elements[
+                            element].phys_vars[target]
+                elif isinstance(self.model.mesh.elements[tri_els[0]].phys_vars[target], list):
+                    sol = np.zeros((len(tri_els),len(self.model.mesh.elements[tri_els[0]].phys_vars[target])))
+                    for i, element in enumerate(tri_els):
+                        coords[i, :] = self.model.mesh.elements[element].cent
+                        sol[i,:] = np.array(self.model.mesh.elements[
+                            element].phys_vars[target][0]).flatten()
+                elif isinstance(self.model.mesh.elements[tri_els[0]].phys_vars[target], np.ndarray):
+                    sol = np.zeros((len(tri_els),len(self.model.mesh.elements[tri_els[0]].phys_vars[target])))
+                    for i, element in enumerate(tri_els):
+                        coords[i, :] = self.model.mesh.elements[element].cent
+                        sol[i,:] = self.model.mesh.elements[
+                            element].phys_vars[target].flatten()
+                else:
+                    sol = np.zeros(len(tri_els))
+                    for i, element in enumerate(tri_els):
+                        coords[i, :] = self.model.mesh.elements[element].cent
+                        try:
+                            sol[i] = self.model.mesh.elements[
+                                element].phys_vars[target](element.cent)
+                        except:
+                            raise RuntimeError(
+                                'Problems with parsing function for plotting')
+        else:
+            coords = self.model.mesh.coords
+            sol = self.sol
+
+        return coords, sol
+
     def plotSolution(
             self,
             target=None,
@@ -1251,54 +1334,17 @@ class NonLinearModel:
 
         See :py:meth:`ModelIterate.plotSolution` for explanation of parameters.
         """
-        if nodewise:
-            coords = self.model.mesh.coords
-            if target is not None:
-                if target in self.vars:
-                    sol = self.vars[target]
-                else:
-                    sol = np.zeros(self.model.mesh.numnodes)
-                    for node in self.model.mesh.nodes:
-                        try:
-                            sol[node.id] = getattr(node, target)
-                        except AttributeError:
-                            raise AttributeError(
-                                'Neither model nor nodes has desired variable')
-            else:
-                sol = self.sol
+        coords, sol = self.getvar(target=target,nodewise=nodewise)
 
+        if target is not None:
+            try:
+                dofs = sol.shape[1]
+            except:
+                dofs = 1
         else:
-            # Elementwise
-            tri_els = self.model.mesh.eltypes[2]
-            coords = np.zeros([len(tri_els), 2])
-            sol = np.zeros(len(tri_els))
-            if isinstance(
-                    self.model.mesh.elements[
-                        tri_els[0]].phys_vars[target],
-                    float) or isinstance(
-                    self.model.mesh.elements[
-                    tri_els[0]].phys_vars[target],
-                    np.float64):
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    sol[i] = self.model.mesh.elements[
-                        element].phys_vars[target]
-            elif isinstance(self.model.mesh.elements[tri_els[0]].phys_vars[target], list):
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    sol[i] = self.model.mesh.elements[
-                        element].phys_vars[target][0][1]
-            else:
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    try:
-                        sol[i] = self.model.mesh.elements[
-                            element].phys_vars[target](element.cent)
-                    except:
-                        raise RuntimeError(
-                            'Problems with parsing function for plotting')
+            dofs = self.eqn.dofs
 
-        if self.eqn.dofs == 1 or target is not None:
+        if dofs == 1:
             mat_sol = self.sparse2mat(
                 target=target,
                 nodewise=nodewise,
@@ -1315,27 +1361,37 @@ class NonLinearModel:
                 if clims is None:
                     clims = [0.9 * min(sol), 1.1 * max(sol)]
                 ctr = plt.contourf(
-                    *mat_sol,
+                    mat_sol[0],
+                    mat_sol[1],
+                    mat_sol[2][0],
                     levels=np.linspace(
                         *clims,
                         num=50))
                 plt.colorbar(ctr)
+            if target is not None:
+                fig.canvas.set_window_title(target)
+                plt.title(target)
+            else:
+                plt.title('Solution to '+self.eqn.name)
+                fig.canvas.set_window_title('Solution to '+self.eqn.name)
             if savefig is not None:
                 plt.savefig(savefig)
             if show:
                 plt.show()
             return mat_sol
 
-        elif self.eqn.dofs == 2:
+        elif dofs == 2:
 
             # Do a quick check before we do the slow steps
             if savefig is not None:
                 if not vel:
-                    if not len(savefig) == self.eqn.dofs:
+                    if not len(savefig) == dofs:
                         raise ValueError(
                             'savefig must be of strings same length as dofs')
 
             mat_sol = self.sparse2mat(
+                target=target,
+                nodewise=nodewise,
                 x_steps=x_steps,
                 y_steps=y_steps,
                 cutoff_dist=cutoff)
@@ -1344,8 +1400,29 @@ class NonLinearModel:
                 self.matsol = mat_sol
 
             # Do the plotting
-            if not vel:
-                for i, ms in enumerate(mat_sol[2:]):
+            if target is not None:
+                for i, ms in enumerate(mat_sol[2]):
+                    fig = plt.figure(figsize=figsize)
+                    if threeD:
+                        ax = fig.add_subplot(111, projection='3d')
+                        ax.plot_trisurf(
+                            self.model.mesh.coords[:, 0],
+                            self.model.mesh.coords[:, 1],
+                            Z=sol[:,i],
+                            cmap=cm.jet)
+                    else:
+                        ctr = plt.contourf(mat_sol[0], mat_sol[1], ms, 50) #, levels=np.linspace(
+                            #0.9 * np.min(mat_sol[2][i]), 1.1 * np.max(mat_sol[2][i]), 50))
+                        plt.colorbar(ctr)
+                        plt.title(target+' Component {:d}'.format(i))
+                        fig.canvas.set_window_title(target+' Component {:d}'.format(i))
+
+                    if savefig is not None:
+                        plt.savefig(savefig[i])
+
+
+            elif not vel:
+                for i, ms in enumerate(mat_sol[2]):
                     fig = plt.figure(figsize=figsize)
                     if threeD:
                         ax = fig.add_subplot(111, projection='3d')
@@ -1358,9 +1435,11 @@ class NonLinearModel:
                         ctr = plt.contourf(mat_sol[0], mat_sol[1], ms, levels=np.linspace(
                             0.9 * min(self.sol[i::2]), 1.1 * max(self.sol[i::2]), 50))
                         plt.colorbar(ctr)
-                        plt.title('Solution component {:d}'.format(i))
+                        plt.title(self.eqn.name+' Solution Component {:d}'.format(i))
+                        fig.canvas.set_window_title(self.eqn.name+' Solution Component {:d}'.format(i))
                     if savefig is not None:
                         plt.savefig(savefig[i])
+
             else:
                 fig = plt.figure(figsize=figsize)
                 if threeD:
@@ -1375,10 +1454,12 @@ class NonLinearModel:
                         mat_sol[0],
                         mat_sol[1],
                         np.sqrt(
-                            mat_sol[2]**2 +
-                            mat_sol[3]**2),
+                            mat_sol[2][0]**2 +
+                            mat_sol[2][1]**2),
                         50)
                     plt.colorbar(ctr)
+                plt.title('Total solution from '+self.eqn.name)
+                fig.canvas.set_window_title('Total solution')
                 if savefig is not None:
                     plt.savefig(savefig)
 
@@ -1392,7 +1473,7 @@ class NonLinearModel:
             nodewise=True,
             x_steps=500,
             y_steps=500,
-            cutoff_dist=2000.0):
+            cutoff_dist=7000.0):
         """Grid up the solution, with potentially concave data
 
         Parameters
@@ -1413,73 +1494,15 @@ class NonLinearModel:
            Matrix Solution : list
               Matrix solution of the form x,y,solution_1,*solution_2 where solution_2 is only returned if the variable we are solving for is 2d.
         """
-        if nodewise:
-            coords = self.model.mesh.coords
-            if target is not None:
-                if target in self.vars:
-                    data = self.vars[target]
-                else:
-                    data = np.zeros(self.model.mesh.numnodes)
-                    for node in self.model.mesh.nodes:
-                        try:
-                            data[node.id] = getattr(node, target)
-                        except AttributeError:
-                            raise AttributeError(
-                                'Neither model nor nodes has desired variable')
 
-            elif self.eqn.dofs == 2:
-                data1 = self.sol[::2]
-                data2 = self.sol[1::2]
-                tx = np.linspace(
-                    np.min(np.array(coords[:, 0])), 
-                    np.max(np.array(coords[:, 0])),
-                    x_steps)
-                ty = np.linspace(
-                    np.min(coords[:, 1]),
-                    np.max(coords[:, 1]), 
-                    y_steps)
-                XI, YI = np.meshgrid(tx, ty)
-                ZI = griddata(coords, data1, (XI, YI), method='linear')
-                ZI2 = griddata(coords, data2, (XI, YI), method='linear')
-                tree = KDTree(coords)
-                dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-                dist = dist.reshape(XI.shape)
-                ZI[dist > cutoff_dist] = np.nan
-                ZI2[dist > cutoff_dist] = np.nan
-                return [tx, ty, ZI, ZI2]
-            else:
-                raise ValueError('Too many dofs')
-
+        coords, data = self.getvar(target=target,nodewise=nodewise)
+        if target is not None:
+            try:
+                dofs = data.shape[1]
+            except:
+                dofs = 1
         else:
-            # Elementwise
-            tri_els = self.model.mesh.eltypes[2]
-            coords = np.zeros([len(tri_els), 2])
-            data = np.zeros(len(tri_els))
-            if isinstance(
-                    self.model.mesh.elements[
-                        tri_els[0]].phys_vars[target],
-                    float) or isinstance(
-                    self.model.mesh.elements[
-                    tri_els[0]].phys_vars[target],
-                    np.float64):
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    data[i] = self.model.mesh.elements[
-                        element].phys_vars[target]
-            elif isinstance(self.model.mesh.elements[tri_els[0]].phys_vars[target], list):
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    data[i] = self.model.mesh.elements[
-                        element].phys_vars[target][0][1]
-            else:
-                for i, element in enumerate(tri_els):
-                    coords[i, :] = self.model.mesh.elements[element].cent
-                    try:
-                        data[i] = self.model.mesh.elements[
-                            element].phys_vars[target](element.cent)
-                    except:
-                        raise RuntimeError(
-                            'Problems with parsing function for plotting')
+            dofs = self.eqn.dofs
 
         # The generic 1d stuff
         tx = np.linspace(
@@ -1492,11 +1515,22 @@ class NonLinearModel:
                         :, 0])), x_steps)
         ty = np.linspace(np.min(coords[:, 1]), np.max(coords[:, 1]), y_steps)
         XI, YI = np.meshgrid(tx, ty)
-        ZI = griddata(coords, data, (XI, YI), method='linear')
         tree = KDTree(coords)
         dist, _ = tree.query(np.c_[XI.ravel(), YI.ravel()], k=1)
-        dist = dist.reshape(XI.shape)
-        ZI[dist > cutoff_dist] = np.nan
+        dist = dist.reshape(XI.shape)       
+        if dofs == 1:
+            ZI = [griddata(coords, data, (XI, YI), method='linear')]
+            ZI[0][dist > cutoff_dist] = np.nan
+        elif target is not None:
+            ZI=[ griddata(coords, data[:,i], (XI, YI), method='linear') for i in range(dofs)]
+            for i in range(dofs):
+                ZI[i][dist > cutoff_dist] = np.nan
+        else: 
+            ZI=[ None for i in range(dofs)]
+            for i in range(dofs):
+                ZI[i]=griddata(coords, data[i::dofs], (XI, YI), method='linear')
+                ZI[i][dist > cutoff_dist] = np.nan
+
         return [tx, ty, ZI]
 
 

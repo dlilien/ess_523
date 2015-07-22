@@ -381,6 +381,7 @@ class Mesh:
         self.eltypes = {}
         self.physents = {}
         self.npartits = {}
+        self.phys_vars = {}
         self.numnodes = 0
         self.numels = 0
 

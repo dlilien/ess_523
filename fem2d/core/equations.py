@@ -234,7 +234,7 @@ class shallowShelf(Equation):
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
-    def __init__(self, b=None, g=9.8, rho=917.0, **kwargs):
+    def __init__(self, nu_name='nu', beta_name='b', b=None, g=9.8, rho=917.0, **kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are
         # constant scalars)
@@ -258,6 +258,8 @@ class shallowShelf(Equation):
             raise TypeError('Density of ice must be a float')
         self.rho = rho
         self.b = b
+        self.nu=nu_name
+        self.beta_name=beta_name
 
     def __call__(self, node1, node2, elements, rhs=False, **kwargs):
         """Attempt to solve the shallow-shelf approximation.
@@ -293,13 +295,13 @@ class shallowShelf(Equation):
 
         if self.b:
             for elm in elements:
-                elm[1].phys_vars['b'] = np.average(
+                elm[1].phys_vars[self.beta_name] = np.average(
                     [self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
         else:
             for elm in elements:
-                elm[1].phys_vars['b'] = np.average(
-                    [elm[1].parent.nodes[node].phys_vars['b'] for node in elm[1].nodes])
+                elm[1].phys_vars[self.beta_name] = np.average(
+                    [elm[1].parent.nodes[node].phys_vars[self.beta_name] for node in elm[1].nodes])
 
         if not 'dzs' in elements[0][1].phys_vars:
             raise AttributeError(
@@ -342,23 +344,23 @@ class shallowShelf(Equation):
             # indices based on a 2x2 submatrix of A for i,j
             if node1==node2:
                 # 1,1
-                ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
                 # 2,2
-                ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
             else:
                 # 1,1
-                ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
                 # 2,2
-                ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+                ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i, 2] = elm[1].area * (elm[1].phys_vars['nu'] * elm[1].phys_vars['h'] * (
+            ints[i, 2] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
                 2 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i, 3] = elm[1].area * (elm[1].phys_vars['nu'] * elm[1].phys_vars['h'] * (
+            ints[i, 3] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
                 2 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1]))
 
         if rhs:
@@ -391,13 +393,16 @@ class ssaAdjointBeta(Equation):
        A guess at beta for which to start. 0 everywhere if none.
     """
 
-    def __init__(self, beta=lambda x: 0.0, **kwargs):
+    def __init__(self, nu_name='nu', beta_name='b', beta=lambda x: 0.0, **kwargs):
         super().__init__(dofs=2, lin=True, **kwargs)
         self.name = 'Shallow Shelf Adjoint'
+        self.nu=nu_name
+        self.beta_name=beta_name
 
         # Even though this is the same equations as the SSA in some sense, it
         # is linear because viscosity is independent of the Lagrange
         # multipliers
+
 
         if 'h' in kwargs:
             self.thickness = None
@@ -444,9 +449,9 @@ class ssaAdjointBeta(Equation):
         # need viscosity, call it nu
 
         # Check for required inputs
-        if not np.all(['b' in elm[1].phys_vars for elm in elements]):
+        if not np.all([self.beta_name in elm[1].phys_vars for elm in elements]):
             for elm in elements:
-                elm[1].phys_vars['b'] = np.average(
+                elm[1].phys_vars[self.beta_name] = np.average(
                     [self.b(elm[1].parent.nodes[node].coords()) for node in elm[1].nodes])
 
         if not 'dzs' in elements[0][1].phys_vars:
@@ -489,16 +494,16 @@ class ssaAdjointBeta(Equation):
 
             # indices based on a 2x2 submatrix of A for i,j
             # 1,1
-            ints[i, 0] = elm[1].area * (elm[1].phys_vars['b']**2 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+            ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                 4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
             # 2,2
-            ints[i, 1] = elm[1].area * (elm[1].phys_vars['b']**2 + elm[1].phys_vars['h'] * elm[1].phys_vars['nu'] * (
+            ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                 4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
             # 1,2
-            ints[i, 2] = elm[1].area * (elm[1].phys_vars['nu'] * elm[1].phys_vars['h'] * (
+            ints[i, 2] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
                 2 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0]))
             # 2,1
-            ints[i, 3] = elm[1].area * (elm[1].phys_vars['nu'] * elm[1].phys_vars['h'] * (
+            ints[i, 3] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
                 2 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1]))
 
         if rhs:

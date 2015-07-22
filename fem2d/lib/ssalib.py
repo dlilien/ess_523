@@ -15,6 +15,9 @@ try:
     from ..core.equations import Function
 except ValueError:
     from core.equations import Function
+from scipy.optimize import minimize_scalar
+
+
 yearInSeconds = 365.25 * 24.0 * 60.0 * 60.0
 
 
@@ -32,8 +35,10 @@ class nu:
         Exponent in Glen's flow law. Defaults to 3.0.
     max_val: float, optional
         Return this if the strain is zero (causes division error). Defaults to 1.0e32
-    units : string,optional
+    units : string, optional
         Must be MPaA or PaS. I.e. do you want to scale nicely for numerics? Default is MPaA.
+    dummy : bool, optional
+        Don't put the velocities on the elements, call the viscosity nu_dummy
         """
 
     def __init__(
@@ -43,12 +48,14 @@ class nu:
             temp=lambda x: -
             10.0,
             n=3.0,
-            units='MPaA'):
+            units='MPaA',
+            dummy=False):
         self.critical_shear_rate = critical_shear_rate
         self.B_0 = B_0
         self.temp = temp
         self.n = n
         self.units = units
+        self.dummy = dummy
 
     def __call__(self, nlmodel, velocity, *args, **kwargs):
         """Calculate the viscosity of ice given a velocity field and a temperature
@@ -85,19 +92,26 @@ class nu:
                         np.sum([gpt[0] * self.temp(element.F(gpt[1:])) for gpt in element.gpoints]))
                 else:
                     element._af = self.B_0
-            element.phys_vars['nu'] = visc(
+            if not self.dummy:
+                element.phys_vars['u'] = np.average(
+                    [velocity[2 * (number - 1)] for index, number in enumerate(element.nodes)])
+                element.phys_vars['v'] = np.average(
+                    [velocity[2 * number - 1] for index, number in enumerate(element.nodes)])
+                nu_name='nu'
+
+            else:
+                nu_name='nu_dummy'
+            
+            element.phys_vars[nu_name] = visc(
                 du,
                 dv,
                 element._af,
                 n=self.n,
                 critical_shear_rate=self.critical_shear_rate,
                 units=self.units)
-            element.phys_vars['u'] = np.average(
-                [velocity[2 * (number - 1)] for index, number in enumerate(element.nodes)])
-            element.phys_vars['v'] = np.average(
-                [velocity[2 * number - 1] for index, number in enumerate(element.nodes)])
+
         print('Average viscosity is {:e}'.format(
-            float(np.average([elm.phys_vars['nu'] for elm in elements.values()]))), end=' ')
+            float(np.average([elm.phys_vars[nu_name] for elm in elements.values()]))), end=' ')
 
 
 def getArrheniusFactor(temp):
@@ -232,12 +246,44 @@ def surfaceSlope(mesh, surface):
             0)
 
 
+def j_of_c(c,model,solution,gradJ,nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy'):
+    """Return the cost as a function of the coefficient to gradJ. For optimization
+
+    Set up so that you pass this function to minimize_scalar. The `args` parameter of `minimize_scalar` should have the `model`, `solution`, and `gradJ` arguments in a 3-tuple.
+
+    Parameters
+    ----------
+    c : float
+       Multiply gradJ by this to optimize. Dealt with behind the scenes.
+    model : :py:ref:`modeling.model`
+       Need to access varuious nodal and elemental variables
+    gradJ : array
+       The gradient to the cost function as calculated by OptimizeBeta.
+    eqn_name : str, optional 
+       The name of the equation for solving the forward problem. Could just use the full-on forward problem but let's not.
+    """
+    for node in model.mesh.nodes.values():
+        node.phys_vars[dummy_beta_name]=c*node.phys_vars[beta_name]
+    dummy_model=model.makeIterate(eqn_name)
+    dummy_model.eqn.guess=solution['Shallow Shelf']
+    sol=dummy_model.iterate(gradient=nu)[eqn_name]
+    if not 'U_d' in model.mesh.phys_vars:
+        U_d=np.zeros(sol.shape)
+        for i,node in model.mesh.nodes.items():
+            U_d[2*(i-1)]=node.phys_vars['u_d']
+            U_d[2*i-1]=node.phys_vars['v_d']
+        model.mesh.phys_vars['U_d']=U_d
+    return np.sum((sol-model.mesh.phys_vars['U_d'])**2)
+
+
 class OptimizeBeta(Function):
 
     """ This function does the optimization to seek for the solution for beta
 
     Parameters
     ----------
+    optimization : str, optional
+       The optimization method to use. Default is the brent option of scipy's minimize_scalar
     ssa_sol_name : str, optional
        Name of the shallow shelf solver. Default 'Shallow Shelf'
     ssa_adjoint_sol_name : str, optional
@@ -248,12 +294,17 @@ class OptimizeBeta(Function):
 
     def __init__(
             self,
+            dummy_viscosity,
+            optimization='brent',
             ssa_sol_name='Shallow Shelf',
             ssa_adjoint_sol_name='Shallow Shelf Adjoint',
-            beta='b'):
+            beta_name='b'):
+        self.optimization=optimization
         self.ssan = ssa_sol_name
         self.ssaan = ssa_adjoint_sol_name
-        self.beta = beta
+        self.beta = beta_name
+        if not optimization=='exponential':
+            self.nu=dummy_viscosity
         self.call = 0
 
     def __call__(self, mesh, model, solution):
@@ -279,8 +330,21 @@ class OptimizeBeta(Function):
                             else:
                                 gradJ[node_num - 1] += 2 * elm.phys_vars[self.beta] * (solution[self.ssan][2 * (elm.nodes[i] - 1)] * solution[self.ssaan][2 * (
                                     elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 60.0
+
+        # Normalize gradJ
         gradJ = gradJ / np.linalg.norm(gradJ)
-        scale = 2.0**float(-self.call)
+
+
+        if self.optimization=='exponential':
+            # This is probably useless, but leave it in for debugging
+            scale = 10.0**float(-self.call)
+        elif self.optimization=='brent' or self.optimization=='golden':
+            res=minimize_scalar(j_of_c, 
+                                args=(model,solution,gradJ,self.nu),
+                                method=self.optimization)
+            scale=res.x
+        print('Optimal scaling found to be ',scale)
+
         for node_num, node in mesh.nodes.items():
-            node.phys_vars[self.beta] = node.phys_vars[
-                self.beta] + scale * gradJ[node_num - 1]
+            node.phys_vars[self.beta] = node.phys_vars[self.beta] + \
+                    scale * gradJ[node_num - 1]
