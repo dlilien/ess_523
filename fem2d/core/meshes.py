@@ -485,6 +485,19 @@ class Mesh:
             'saddlebrown',
             'darkorange',
             'darkmagenta',
+            'y',
+            'b',
+            'k',
+            'r',
+            'c',
+            'g',
+            'm',
+            'darkred',
+            'darkgreen',
+            'darkslategray',
+            'saddlebrown',
+            'darkorange',
+            'darkmagenta',
             'y']
         plot_these = np.sort(list(self.physents.keys()))[0:-1]
         plt_lines = {}

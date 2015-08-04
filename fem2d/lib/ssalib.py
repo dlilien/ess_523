@@ -295,14 +295,16 @@ class OptimizeBeta(Function):
     def __init__(
             self,
             dummy_viscosity,
-            optimization='brent',
+            optimization='tryHalf',
             ssa_sol_name='Shallow Shelf',
             ssa_adjoint_sol_name='Shallow Shelf Adjoint',
-            beta_name='b'):
+            beta_name='b',
+            max_steps=10):
         self.optimization=optimization
         self.ssan = ssa_sol_name
         self.ssaan = ssa_adjoint_sol_name
         self.beta = beta_name
+        self.max_steps = max_steps
         if not optimization=='exponential':
             self.nu=dummy_viscosity
         self.call = 0
@@ -332,12 +334,37 @@ class OptimizeBeta(Function):
                                     elm.nodes[j] - 1)] + solution[self.ssan][2 * elm.nodes[i] - 1] * solution[self.ssaan][2 * elm.nodes[j] - 1]) * elm.area / 60.0
 
         # Normalize gradJ
-        gradJ = gradJ / np.linalg.norm(gradJ)
+        # gradJ = gradJ / np.linalg.norm(gradJ)
 
 
         if self.optimization=='exponential':
             # This is probably useless, but leave it in for debugging
             scale = 10.0**float(-self.call)
+        elif self.optimization == 'tryHalf':
+            if not 'U_d' in model.mesh.phys_vars:
+                U_d=np.zeros(solution[self.ssaan].shape)
+                for i,node in model.mesh.nodes.items():
+                    U_d[2*(i-1)]=node.phys_vars['u_d']
+                    U_d[2*i-1]=node.phys_vars['v_d']
+                model.mesh.phys_vars['U_d']=U_d
+            initial_norm = np.sum((solution[self.ssaan]-model.mesh.phys_vars['U_d'])**2)
+
+            for i in range(self.max_steps):
+                new_norm = j_of_c(1.0 / 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
+                if new_norm < initial_norm:
+                    scale = 1.0 / 2.0**(float(i))
+                    break
+
+                if not i==0:
+                    new_norm = j_of_c(1.0 * 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
+                    if new_norm < initial_norm:
+                        scale = 1.0 * 2.0**(float(i))
+                        break
+
+
+
+            
+
         elif self.optimization=='brent' or self.optimization=='golden':
             res=minimize_scalar(j_of_c, 
                                 args=(model,solution,gradJ,self.nu),
