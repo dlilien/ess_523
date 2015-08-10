@@ -283,13 +283,17 @@ class OptimizeBeta(Function):
     Parameters
     ----------
     optimization : str, optional
-       The optimization method to use. Default is the brent option of scipy's minimize_scalar
+       The optimization method to use. Default is trying the gradient, half, 2 times, 1/4, etc. Called tryHalf. Other option is brent of scipy's minimize_scalar.
     ssa_sol_name : str, optional
        Name of the shallow shelf solver. Default 'Shallow Shelf'
     ssa_adjoint_sol_name : str, optional
        Name of the shallow shelf adjoint solver. Default 'Shallow Shelf Adjoint'
     beta : str,optional
        Name of the slip variable
+    min_steps : int,optional
+       Minimum number of step sizes to try in search for descent direction. Default 0.
+    max_steps : int,optional
+       Maximum number of steps to use. Default 10.
     """
 
     def __init__(
@@ -299,11 +303,13 @@ class OptimizeBeta(Function):
             ssa_sol_name='Shallow Shelf',
             ssa_adjoint_sol_name='Shallow Shelf Adjoint',
             beta_name='b',
+            min_steps=0,
             max_steps=10):
         self.optimization=optimization
         self.ssan = ssa_sol_name
         self.ssaan = ssa_adjoint_sol_name
         self.beta = beta_name
+        self.min_steps = min_steps
         self.max_steps = max_steps
         if not optimization=='exponential':
             self.nu=dummy_viscosity
@@ -349,22 +355,38 @@ class OptimizeBeta(Function):
                 model.mesh.phys_vars['U_d']=U_d
             initial_norm = np.sum((solution[self.ssaan]-model.mesh.phys_vars['U_d'])**2)
 
-            for i in range(self.max_steps):
-                new_norm = j_of_c(1.0 / 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
-                if new_norm < initial_norm:
-                    scale = 1.0 / 2.0**(float(i))
-                    break
+            if not self.min_steps==0:
+                scales = np.zeros(self.min_steps*2+1)
+                scale[0]=1.0
+                for i in range(1,self.min_steps):
+                    scale[2*i-1] = 1.0 / 2.0**i
+                    scale[2*i] = 1.0 * 2.0**i
+                norms = np.zeros(self.min_steps) # container for norms
+                found = False # Do we have a solution?
 
-                if not i==0:
-                    new_norm = j_of_c(1.0 * 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
+
+            for i in scale in enumerate(scales):
+                norms[i] = j_of_c(scale,model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
+            if not self.min_steps==0:
+                best = np.argmin(norms)
+                scale = scales[best]
+                if best < initial_norm:
+                    found = True
+
+
+            if not found:
+                for i in range(self.min_steps,self.max_steps):
+                    new_norm = j_of_c(1.0 / 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
                     if new_norm < initial_norm:
-                        scale = 1.0 * 2.0**(float(i))
+                        scale = 1.0 / 2.0**(float(i))
                         break
 
-
-
+                    if not i==0:
+                        new_norm = j_of_c(1.0 * 2.0**(float(i)),model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
+                        if new_norm < initial_norm:
+                            scale = 1.0 * 2.0**(float(i))
+                            break
             
-
         elif self.optimization=='brent' or self.optimization=='golden':
             res=minimize_scalar(j_of_c, 
                                 args=(model,solution,gradJ,self.nu),
