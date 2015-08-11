@@ -370,7 +370,7 @@ class OptimizeBeta(Function):
             if not self.min_steps==0:
                 best = np.argmin(norms)
                 scale = scales[best]
-                if best < initial_norm:
+                if norms[best] < initial_norm:
                     found = True
 
 
