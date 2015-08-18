@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2015 dlilien <dlilien@berens>
+# Copyright Â© 2015 dlilien <dlilien@berens>
 #
 # Distributed under terms of the MIT license.
 
@@ -20,8 +20,8 @@ class TestEquationList(unittest.TestCase):
         eql = eqnlist()
         eql.setitem('a', 'a_val', 0)
         eql.setitem('b', 'b_val')
-        eql.setitem('c', 'c_val', before_all=True)
-        eql.setitem('d', 'd_val', after_all=True)
+        eql.setitem('c', 'c_val', execute='before_all')
+        eql.setitem('d', 'd_val', execute='after_all')
         for key in sorted(eql.numbers):
             eql[key]
         self.assertEqual(eql['d'], 'd_val')

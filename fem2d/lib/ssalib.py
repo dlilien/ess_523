@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2015 David Lilien <dlilien90@gmail.com>
+# Copyright ÃÂÃÂ© 2015 David Lilien <dlilien90@gmail.com>
 #
 # Distributed under terms of the MIT license.
 
@@ -357,19 +357,23 @@ class OptimizeBeta(Function):
 
             if not self.min_steps==0:
                 scales = np.zeros(self.min_steps*2+1)
-                scale[0]=1.0
-                for i in range(1,self.min_steps):
-                    scale[2*i-1] = 1.0 / 2.0**i
-                    scale[2*i] = 1.0 * 2.0**i
-                norms = np.zeros(self.min_steps) # container for norms
+                scales[0]=1.0
+                for i in range(1,self.min_steps+1):
+                    scales[2*i-1] = 1.0 / 2.0**float(i)
+                    scales[2*i] = 1.0 * 2.0**float(i)
+                norms = np.zeros(self.min_steps*2+1) # container for norms
                 found = False # Do we have a solution?
+                print(scales)
 
 
-            for i in scale in enumerate(scales):
+            for i,scale in enumerate(scales):
                 norms[i] = j_of_c(scale,model,solution,gradJ,self.nu,eqn_name='SSA Dummy',beta_name='b',dummy_beta_name='beta_dummy')
             if not self.min_steps==0:
                 best = np.argmin(norms)
                 scale = scales[best]
+                print('Min things done')
+                print(best,scale)
+                print(norms)
                 if norms[best] < initial_norm:
                     found = True
 

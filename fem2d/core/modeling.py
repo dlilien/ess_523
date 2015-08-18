@@ -3,7 +3,7 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2015 David Lilien <dal22@uw.edu>
+# Copyright ÃÂ© 2015 David Lilien <dal22@uw.edu>
 #
 # Distributed under terms of the MIT license.
 
@@ -379,6 +379,7 @@ class eqnlist:
             if execute in self.numbers:
                 raise AttributeError(
                     'Cannot overwrite existing equation number')
+            number = execute
         elif type(execute) == str:
             if execute == 'before_all':
                 number = -1
@@ -389,7 +390,7 @@ class eqnlist:
                 while number in self.numbers:
                     number += 1
             elif execute == 'never':
-                number=None
+                number = None
                 self.dummies[key]=value
                 return
             else:
