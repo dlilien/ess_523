@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2015 dlilien <dlilien@berens>
+# Copyright ÃÂ© 2015 dlilien <dlilien@berens>
 #
 # Distributed under terms of the MIT license.
 
@@ -14,9 +14,10 @@ import numpy as np
 import unittest
 from fem2d.core import Model, LinearModel, diffusion, advectionDiffusion, shallowShelf
 from os import path
+from nose.plugins.attrib import attr
 
-
-class TestEqautions(unittest.TestCase):
+@attr(slow=False)
+class TestEquations(unittest.TestCase):
 
     def test_diffusion(self):
         mo = Model(path.join(path.split(__file__)[0], 'test_lib/testmesh.msh'))
@@ -43,6 +44,11 @@ class TestEqautions(unittest.TestCase):
         self.assertTrue(True)
 
     def test_ssa(self):
+        """
+        This doesn't implement any actual testing, really just does syntax. 
+
+        Real tests are in test_ssa.py, which is slow.
+        """
         mo = Model(path.join(path.split(__file__)[0], 'test_lib/testmesh.msh'))
         mo.add_equation(shallowShelf())
         mo.add_BC('dirichlet', 1, lambda x: (1.0, 1.0))
