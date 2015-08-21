@@ -344,41 +344,39 @@ class shallowShelf(Equation):
             # indices based on a 2x2 submatrix of A for i,j
             if node1==node2:
                 # 1,1
-                ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                ints[i, 0] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
                 # 2,2
-                ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                ints[i, 1] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
             else:
                 # 1,1
-                ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                ints[i, 0] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
                 # 2,2
-                ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                ints[i, 1] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
                     4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
+
+
             # 1,2
-            ints[i, 2] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
-                2 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0]))
+            ints[i, 2] = elm[1].area * elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
+                2 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0])
             # 2,1
-            ints[i, 3] = elm[1].area * (elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
-                2 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1]))
+            ints[i, 3] = elm[1].area * elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
+                2 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][1])
 
         if rhs:
-            # TODO the integrals, check for more parameters?
             ints_rhs = np.zeros((self.max_nei, 2))
             for i, elm in enumerate(elements):
-                # 1st SSA eqn (d/dx) rhs
-                ints_rhs[i, 0] = - self.rho * self.g * elm[1].phys_vars['h'] * \
-                    elm[1].phys_vars['dzs'][0] * elm[1].area
-                # 2nd SSA eqn (d/dy) rhs
-                ints_rhs[i, 1] = - self.rho * self.g * elm[1].phys_vars['h'] * \
-                    elm[1].phys_vars['dzs'][1] * elm[1].area
+                ints_rhs[i, :] = - self.rho * self.g * elm[1].phys_vars['h'] * \
+                    elm[1].phys_vars['dzs'].ravel() * elm[1].area
+
 
             # return with rhs
-            return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3]), np.sum(ints_rhs[:, 0]), np.sum(ints_rhs[:, 1])
+            return tuple(np.sum(ints,0))+tuple(np.sum(ints_rhs,0))
 
         # return if rhs is false
-        return np.sum(ints[:, 0]), np.sum(ints[:, 1]), np.sum(ints[:, 2]), np.sum(ints[:, 3])
+        return tuple(np.sum(ints,0))
 
 
 class ssaAdjointBeta(Equation):
