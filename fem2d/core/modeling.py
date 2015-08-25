@@ -190,53 +190,68 @@ class Model:
             diffEQ=False)
         return None
 
-    def add_BC(self, cond_type, target_edge, function, eqn_name=None):
+    def add_BC(self, cond_type, target_edge, function, eqn_name=None, order=None):
         """Assign a boundary condition (has some tests)
+
+        Note: tests do not yet work for mixed boundary conditions
 
         Parameters
         ----------
         cond_type : string
-            Type of boundary condition, must be dirchlet or neumann
+            Type of boundary condition, must be dirchlet, neumann, or mixed.
         target_edge : int
             The number of the boundary to which this is being assigned
         function : function
             What the value is on this boundary,
             must be specified if time dependent
+        order : string, optional
+            Only read if the boundary type is mixed. Choices are nd or dn (neumann dirichlet for x,y)
         """
         # You can also just manually edit the self.BCs dictionary
-        if not cond_type in ['neumann', 'dirichlet']:
+        if not cond_type in ['neumann', 'dirichlet', 'mixed']:
             raise TypeError('Not a recognized boundary condition type')
         elif not target_edge in self.mesh.physents.keys():
             raise ValueError('Specified target edge does not exist')
         elif target_edge == max(self.mesh.physents.keys()):
             raise ValueError('Specified target is plane not edge')
         else:
-            if not self.time_dep:
-                try:
-                    function(
-                        self.mesh.nodes[
-                            self.mesh.elements[
-                                self.mesh.physents[target_edge][0]].nodes[0]].coords())
-                except:
-                    raise TypeError(
-                        'Not a usable function, must take vector input and time')
+            if not cond_type == 'mixed':
+                if not self.time_dep:
+                    try:
+                        function(
+                            self.mesh.nodes[
+                                self.mesh.elements[
+                                    self.mesh.physents[target_edge][0]].nodes[0]].coords())
+                    except:
+                        raise TypeError(
+                            'Not a usable function, must take vector input and time')
+                else:
+                    try:
+                        function(
+                            self.mesh.nodes[
+                                self.mesh.elements[
+                                    self.mesh.physents[target_edge][0]].nodes[0]].coords(),
+                            0.0)
+                    except:
+                        raise TypeError(
+                            'Not a usable function, must take vector input and time')
+                if eqn_name is not None:
+                    self.eqn[eqn_name].BCs[target_edge] = (cond_type, function)
+                else:
+                    self.eqn[
+                        self.eqn.numbers[0]].BCs[target_edge] = (
+                        cond_type,
+                        function)
             else:
-                try:
-                    function(
-                        self.mesh.nodes[
-                            self.mesh.elements[
-                                self.mesh.physents[target_edge][0]].nodes[0]].coords(),
-                        0.0)
-                except:
-                    raise TypeError(
-                        'Not a usable function, must take vector input and time')
-        if eqn_name is not None:
-            self.eqn[eqn_name].BCs[target_edge] = (cond_type, function)
-        else:
-            self.eqn[
-                self.eqn.numbers[0]].BCs[target_edge] = (
-                cond_type,
-                function)
+                if eqn_name is not None:
+                    self.eqn[eqn_name].BCs[target_edge] = (cond_type, function, order)
+                else:
+                    self.eqn[
+                        self.eqn.numbers[0]].BCs[target_edge] = (
+                        cond_type,
+                        function, order)
+  
+
 
     def add_IC(self, function, eqn_name=None):
         """Associate an initial condition with an equation.
@@ -617,9 +632,11 @@ class ModelIterate:
                      for edgeval in BCs.items() if edgeval[1][0] == 'dirichlet']
         neumann = [edgeval[0]
                    for edgeval in BCs.items() if edgeval[1][0] == 'neumann']
+        mixed = [(edgeval[0],edgeval[1][2])
+                   for edgeval in BCs.items() if edgeval[1][0] == 'mixed']
         b_funcs = {edgeval[0]: edgeval[1][1] for edgeval in BCs.items()}
         edges = np.sort(list(Mesh.physents.keys()))[0:-1]
-        listed_edges = np.sort(dirichlet + neumann)
+        listed_edges = np.sort(dirichlet + neumann + [e[0] for e in mixed])
         if not all(edges == listed_edges):
             for edge in listed_edges:
                 if edge not in edges:
@@ -657,10 +674,7 @@ class ModelIterate:
                 (2 * len(Mesh.physents[edge]),), dtype=int)
             for i, edge_element in enumerate(Mesh.physents[edge]):
                 edge_nodes[edge][2 * i] = Mesh.elements[edge_element].nodes[0]
-                edge_nodes[edge][
-                    2 *
-                    i +
-                    1] = Mesh.elements[edge_element].nodes[1]
+                edge_nodes[edge][2 * i +1] = Mesh.elements[edge_element].nodes[1]
             edge_nodes[edge] = np.unique(edge_nodes[edge])  # no repeats
 
         for edge in neumann:
@@ -695,15 +709,58 @@ class ModelIterate:
                     lambda x: 0)  # We actually need to do something to implement a zero
                 # maybe throw the error though?
 
-    # TODO make non-normal stuff, non-flux  possible
+        for edge,order in mixed:
+            # don't try to catch any error here
+            if not order in ['nd', 'dn']:
+                raise ValueError('Order must be nd or dn')
+            
+            # Determine the ordering of the boundaries
+            if order=='nd':
+                dnum=1
+                nnum=0
+            else:
+                dnum=0
+                nnum=1
+
+            # apply the mixed conditions
+            if time is not None:
+                self._applyDirichlet(
+                    edge_nodes[edge],
+                    b_funcs[edge],
+                    time=time,
+                    number=dnum)
+                self._applyNeumann(
+                    edge_nodes[edge],
+                    b_funcs[edge],
+                    normal=normal,
+                    time=time,
+                    number=nnum)
+            else:
+                self._applyNeumann(
+                    edge_nodes[edge],
+                    b_funcs[edge],
+                    normal=normal,
+                    number=nnum)
+                self._applyDirichlet(
+                    edge_nodes[edge],
+                    b_funcs[edge],
+                    number=dnum)
+                
     def _applyNeumann(
             self,
             edge_nodes,
             function,
             normal=True,
             flux=True,
-            time=None):
-        """Apply a natural boundary condition, must be normal"""
+            time=None,
+            number=None):
+        """Apply a natural boundary condition, must be normal
+        
+        Parameters
+        ----------
+        number : int, optional
+           If not None and dofs > 1, apply only to the number'th item. Default None.    
+        """
         if self.eqn.dofs == 1:
             for node in edge_nodes:
                 for j, els in self.mesh.nodes[node].neighbors.items():
@@ -746,6 +803,13 @@ class ModelIterate:
                                                             1:-1])) for gpt in self.mesh.elements[el].gpoints])
 
         elif self.eqn.dofs == 2:
+
+            if number is None:
+                numbers=[0, 1]
+            else:
+                numbers=[number]
+
+
             for node in edge_nodes:
                 for j, els in self.mesh.nodes[node].neighbors.items():
                     if j in edge_nodes:
@@ -756,57 +820,48 @@ class ModelIterate:
                                         'You need to specify the BC as a flux (e.g. divide out k in diffusion)')
                                 if time is not None:
                                     if normal:  # Normal, time-dependent, 2dofs
-                                        self.rhs[2 * (node - 1)] = self.rhs[2 * (node - 1)] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1]), time)[
-                                            0] * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2 * node - 1] = self.rhs[2 * node - 1] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1])[
-                                                                                                 1], time) * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        for num in numbers:
+                                            self.rhs[2*(node-1)+num] = self.rhs[2*(node-1)+num] -np.sum(
+                                                    [self.mesh.elements[el].length 
+                                                        * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1]), time)[num] 
+                                                        * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1]))
+                                                        for gpt in self.mesh.elements[el].gpoints])
 
                                     else:  # Non-normal, time-dependent, 2dofs
-                                        self.rhs[2 * (node - 1)] = self.rhs[2 * (node - 1)] - np.sum([self.mesh.elements[el].length * gpt[0] * (np.dot(function(self.mesh.elements[el].F(gpt[1:-1]), time)[0], self.elements[
-                                            el].normal)) * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[
-                                            2 * node - 1] = self.rhs[
-                                            2 * node - 1] - np.sum(
-                                            [
-                                                self.mesh.elements[el].length * gpt[0] * (
-                                                    np.dot(
-                                                        function(
-                                                            self.mesh.elements[el].F(
-                                                                gpt[
-                                                                    1:-1]), time)[1], self.elements[el].normal)) * self.mesh.elements[el].bases[
-                                                    self.mesh.elements[el].nodes.index(node)](
-                                                    self.mesh.elements[el].F(
-                                                        gpt[
-                                                            1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        for num in numbers:
+                                            self.rhs[2 * (node - 1)+num] = self.rhs[2 * (node - 1)+num] - np.sum(
+                                                    [self.mesh.elements[el].length 
+                                                        * gpt[0] 
+                                                        * (np.dot(function(self.mesh.elements[el].F(gpt[1:-1]), time)[num],
+                                                        self.elements[el].normal)) 
+                                                        * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)
+                                                            ](self.mesh.elements[el].F(gpt[1:-1])) 
+                                                        for gpt in self.mesh.elements[el].gpoints])
                                 else:
                                     if normal:  # Normal, steady state, 2dofs
-                                        self.rhs[2 * (node - 1)] = self.rhs[2 * (node - 1)] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1]))[
-                                            0] * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[2 * node - 1] = self.rhs[2 * node - 1] - np.sum([self.mesh.elements[el].length * gpt[0] * function(self.mesh.elements[el].F(gpt[1:-1]))[
-                                                                                                 1] * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
+                                        for num in numbers:
+                                            self.rhs[2 * (node - 1)+num] = self.rhs[2 * (node - 1)+num] - np.sum(
+                                                    [self.mesh.elements[el].length * gpt[0] 
+                                                        * function(self.mesh.elements[el].F(gpt[1:-1]))[num] 
+                                                        * self.mesh.elements[el].bases[
+                                                            self.mesh.elements[el].nodes.index(node)](
+                                                                self.mesh.elements[el].F(gpt[1:-1])) 
+                                                        for gpt in self.mesh.elements[el].gpoints])
 
                                     else:  # Non-normal, steady state, 2dofs
-                                        self.rhs[2 * (node - 1)] = self.rhs[2 * (node - 1)] - np.sum([self.mesh.elements[el].length * gpt[0] * (np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[0], self.elements[
-                                            el].normal)) * self.mesh.elements[el].bases[self.mesh.elements[el].nodes.index(node)](self.mesh.elements[el].F(gpt[1:-1])) for gpt in self.mesh.elements[el].gpoints])
-                                        self.rhs[
-                                            2 * node - 1] = self.rhs[
-                                            2 * node - 1] - np.sum(
-                                            [
-                                                self.mesh.elements[el].length * gpt[0] * (
-                                                    np.dot(
-                                                        function(
-                                                            self.mesh.elements[el].F(
-                                                                gpt[
-                                                                    1:-1]))[1], self.elements[el].normal)) * self.mesh.elements[el].bases[
-                                                    self.mesh.elements[el].nodes.index(node)](
-                                                    self.mesh.elements[el].F(
-                                                        gpt[
-                                                            1:-1])) for gpt in self.mesh.elements[el].gpoints])
-
+                                        for num in numbers:
+                                            self.rhs[2 * (node - 1)+num] = self.rhs[2 * (node - 1)+num] - np.sum(
+                                                    [self.mesh.elements[el].length * gpt[0] 
+                                                        * (np.dot(function(self.mesh.elements[el].F(gpt[1:-1]))[num],
+                                                            self.elements[el].normal)) 
+                                                        * self.mesh.elements[el].bases[
+                                                            self.mesh.elements[el].nodes.index(node)](
+                                                                self.mesh.elements[el].F(gpt[1:-1]))
+                                                            for gpt in self.mesh.elements[el].gpoints])
         else:
             raise ValueError('Cannot do more than 2 dofs')
 
-    def _applyDirichlet(self, edge_nodes, function, time=None):
+    def _applyDirichlet(self, edge_nodes, function, time=None, number=None):
         """Let's apply an essential boundary condition"""
         if self.eqn.dofs == 1:
             for node in edge_nodes:
@@ -827,63 +882,86 @@ class ModelIterate:
                     self.matrix[node - 1, j - 1] = 0.0
                     self.matrix[j - 1, node - 1] = 0.0
         elif self.eqn.dofs == 2:
-            for node in edge_nodes:
-                # We now have 4 terms relating to this element itself
-                self.matrix[2 * (node - 1), 2 * (node - 1)] = 1.0
-                self.matrix[2 * node - 1, 2 * node - 1] = 1.0
-                self.matrix[2 * node - 1, 2 * (node - 1)] = 0.0
-                self.matrix[2 * (node - 1), 2 * node - 1] = 0.0
+            if number is None:
+                for node in edge_nodes:
+                    # We now have 4 terms relating to this element itself
+                    self.matrix[2 * (node - 1), 2 * (node - 1)] = 1.0
+                    self.matrix[2 * node - 1, 2 * node - 1] = 1.0
+                    self.matrix[2 * node - 1, 2 * (node - 1)] = 0.0
+                    self.matrix[2 * (node - 1), 2 * node - 1] = 0.0
 
-                # Set the values on the right hand side
-                if time is not None:
-                    self.rhs[
-                        2 * (node - 1)] = function(self.mesh.nodes[node].coords(), time)[0]
-                    self.rhs[
-                        2 *
-                        node -
-                        1] = function(
-                        self.mesh.nodes[node].coords(),
-                        time)[1]
-                else:
-                    self.rhs[
-                        2 * (node - 1)] = function(self.mesh.nodes[node].coords())[0]
-                    self.rhs[
-                        2 *
-                        node -
-                        1] = function(
-                        self.mesh.nodes[node].coords())[1]
+                    # Set the values on the right hand side
+                    if time is not None:
+                        self.rhs[
+                            2 * (node - 1)] = function(self.mesh.nodes[node].coords(), time)[0]
+                        self.rhs[
+                            2 *
+                            node -
+                            1] = function(
+                            self.mesh.nodes[node].coords(),
+                            time)[1]
+                    else:
+                        self.rhs[
+                            2 * (node - 1)] = function(self.mesh.nodes[node].coords())[0]
+                        self.rhs[
+                            2 *
+                            node -
+                            1] = function(
+                            self.mesh.nodes[node].coords())[1]
 
-                # zero out the off-diagonal elements to get the condition correct
-                # and keep symmetry if we have it
-                # Get the neighboring nodes
-                for j in self.mesh.nodes[node].neighbors.keys():
-                    if j not in edge_nodes:
-                        # Check if this neighboring node is on the edge
+                    # zero out the off-diagonal elements to get the condition correct
+                    # and keep symmetry if we have it
+                    # Get the neighboring nodes
+                    for j in self.mesh.nodes[node].neighbors.keys():
+                        if j not in edge_nodes:
+                            # Check if this neighboring node is on the edge
 
-                        # We have four elements to zero out
-                        self.rhs[2 * (j - 1)] = self.rhs[2 * (j - 1)] - self.matrix[
-                            2 * (j - 1), 2 * (node - 1)] * self.rhs[2 * (node - 1)]
-                        self.rhs[2 * j - 1] = self.rhs[2 * j - 1] - \
-                            self.matrix[2 * j - 1, 2 * node - 1] * self.rhs[2 * node - 1]
-                        # Cross-terms
-                        self.rhs[2 * (j - 1)] = self.rhs[2 * (j - 1)] - \
-                            self.matrix[2 * (j - 1), 2 * node - 1] * self.rhs[2 * node - 1]
-                        self.rhs[2 * j - 1] = self.rhs[2 * j - 1] - \
-                            self.matrix[2 * j - 1, 2 * (node - 1)] * self.rhs[2 * (node - 1)]
+                            # We have four elements to zero out
+                            self.rhs[2 * (j - 1)] = self.rhs[2 * (j - 1)] - self.matrix[
+                                2 * (j - 1), 2 * (node - 1)] * self.rhs[2 * (node - 1)]
+                            self.rhs[2 * j - 1] = self.rhs[2 * j - 1] - \
+                                self.matrix[2 * j - 1, 2 * node - 1] * self.rhs[2 * node - 1]
+                            # Cross-terms
+                            self.rhs[2 * (j - 1)] = self.rhs[2 * (j - 1)] - \
+                                self.matrix[2 * (j - 1), 2 * node - 1] * self.rhs[2 * node - 1]
+                            self.rhs[2 * j - 1] = self.rhs[2 * j - 1] - \
+                                self.matrix[2 * j - 1, 2 * (node - 1)] * self.rhs[2 * (node - 1)]
 
-                    # zero out each of these, and also the symmetric part
-                    # all u
-                    self.matrix[2 * (node - 1), 2 * (j - 1)] = 0.0
-                    self.matrix[2 * (j - 1), 2 * (node - 1)] = 0.0
-                    # all v
-                    self.matrix[2 * node - 1, 2 * j - 1] = 0.0
-                    self.matrix[2 * j - 1, 2 * node - 1] = 0.0
-                    # uv
-                    self.matrix[2 * (node - 1), 2 * j - 1] = 0.0
-                    self.matrix[2 * j - 1, 2 * (node - 1)] = 0.0
-                    # vu
-                    self.matrix[2 * node - 1, 2 * (j - 1)] = 0.0
-                    self.matrix[2 * (j - 1), 2 * node - 1] = 0.0
+                        # zero out each of these, and also the symmetric part
+                        # all u
+                        self.matrix[2 * (node - 1), 2 * (j - 1)] = 0.0
+                        self.matrix[2 * (j - 1), 2 * (node - 1)] = 0.0
+                        # all v
+                        self.matrix[2 * node - 1, 2 * j - 1] = 0.0
+                        self.matrix[2 * j - 1, 2 * node - 1] = 0.0
+                        # uv
+                        self.matrix[2 * (node - 1), 2 * j - 1] = 0.0
+                        self.matrix[2 * j - 1, 2 * (node - 1)] = 0.0
+                        # vu
+                        self.matrix[2 * node - 1, 2 * (j - 1)] = 0.0
+                        self.matrix[2 * (j - 1), 2 * node - 1] = 0.0
+            else:
+                # this is for mixed BCs. Need to do things only for one of the rows.
+                # This is going to break symmetry as is, could be fixed TODO
+                for node in edge_nodes:
+                    # We now have 4 terms relating to this element itself
+                    self.matrix[2 * (node - 1) + number, 2 * (node - 1) + number] = 1.0
+                    self.matrix[2 * (node - 1) + number, 2 * (node - 1) + 1 - number] = 0.0
+
+                    # Set the values on the right hand side
+                    if time is not None:
+                        self.rhs[ 2 * (node - 1) + number] = function(
+                                self.mesh.nodes[node].coords(), time)[number]
+                    else:
+                        self.rhs[2 * (node - 1) + number] = function(
+                                self.mesh.nodes[node].coords())[number]
+
+                    # zero out the off-diagonal elements to get the condition correct
+                    for j in self.mesh.nodes[node].neighbors.keys():
+                        if j not in edge_nodes:
+                            self.matrix[2 * (node - 1) + number, 2 * (j - 1) + number] = 0.0
+
+                            self.matrix[2 * (node - 1) + number, 2 * (j - 1) + 1 - number] = 0.0
 
         else:
             raise ValueError('Cannot do more than 2 dofs')

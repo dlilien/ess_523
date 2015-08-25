@@ -20,6 +20,7 @@ from fem2d.lib import nu, surfaceSlope
 
 yearInSeconds = 365.24 * 24.0 * 60.0 * 60.0
 
+
 def test_macayeal_ssa():
     model = Model(path.join(path.split(__file__)[0], 'test_lib/icesheet.msh'))
 
@@ -32,14 +33,15 @@ def test_macayeal_ssa():
                                     b=lambda x: 0.0,
                                     thickness=lambda x: 1000.0,
                                     method='CG',
-                                    nl_tolerance=1.0e-3))
-    model.add_BC('dirichlet', 1, lambda x: (0.0,0.0))
+                                    nl_tolerance=1.0e-3,
+                                    relaxation=1.0))
+    model.add_BC('dirichlet', 1, lambda x: (0.0, 0.0))
     model.add_BC('dirichlet', 2, inflow)
     #model.add_BC('dirichlet',2, lambda x: (0.0, 0.0))
-    #model.add_BC('dirichlet', 3, inflow)
-    model.add_BC('neumann', 3, lambda x: (0.0, 0.0))
+    model.add_BC('dirichlet', 3, lambda x: (0.0, 0.0))
+    #model.add_BC('mixed', 3, lambda x: (0.0, 0.0), order='dn')
     #model.add_BC('dirichlet', 4, lambda x: (-x[1]/1000.0,0.0))
-    model.add_BC('dirichlet', 4, lambda x: (0.0, 0.0))
+    model.add_BC('neumann', 4, lambda x: (0.0, 0.0))
 
     # Solve the system
     nlmodel = model.makeIterate()
@@ -53,7 +55,7 @@ def inflow(x):
     """
     Function for the inflow boundary on the ice shelf
     """
-    if x[0]>=30000.0:
+    if x[0]>=-30000.0 and x[0]<=30000.0:
         return (0.0,400.0)
     else:
         return (0.0,0.0)
