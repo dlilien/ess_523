@@ -224,7 +224,9 @@ class shallowShelf(Equation):
     g : float,optional
        The value of gravity. Allows for unit flexibility. Defaults to 9.8.
     rho : float,optional
-       The density of ice. Defaults to 917
+       The density of ice. Defaults to 917.0
+    rhow : float,optional
+       The density of water. Defaults to 1028.0
 
     Keyword Arguments
     -----------------
@@ -234,7 +236,7 @@ class shallowShelf(Equation):
        A function to give the thickness of the ice. Needs to accept a length two vector as an argument and return a scalar. Only set it here if you don't need it to change (i.e. steady state, or fixed domain time-dependent)
     """
 
-    def __init__(self, nu_name='nu', beta_name='b', b=None, g=9.8, rho=917.0, **kwargs):
+    def __init__(self, nu_name='nu', beta_name='b', b=None, g=9.8, rho=917.0, rhow=1028.0, **kwargs):
         """Need to set the dofs"""
         # nonlinear, 2 dofs, needs gravity and ice density (which I insist are
         # constant scalars)
@@ -257,6 +259,7 @@ class shallowShelf(Equation):
         if not type(rho) == float:
             raise TypeError('Density of ice must be a float')
         self.rho = rho
+        self.rhow = rhow
         self.b = b
         self.nu=nu_name
         self.beta_name=beta_name
@@ -329,6 +332,8 @@ class shallowShelf(Equation):
                 elm[1].h = 2 * \
                     np.sum([gp[0] * (kwargs['thickness'](gp[1]))
                             for gp in elm[1].gpts])
+            #    for node_num in elm[1].nodes:
+            #        elm[1].parent.nodes[node_num].phys_vars[node_num]=kwargs['thickness'](elm[1].parent.nodes[node_num].coords())
 
             # For first time through if constant thickness
             if not 'h' in elm[1].phys_vars:
@@ -340,23 +345,26 @@ class shallowShelf(Equation):
                             'h'] = 2 * np.sum([gp[0] * (self.thickness(gp[1])) for gp in elm[1].gpts])
                 else:
                     raise AttributeError('No thickness found')
+            
+            #for num,node in elm[1].parent.nodes.items():
+            #    if self.h is not None:
+            #        node.phys_vars['h'] = self.h
+            #    elif self.thickness is not None:
+            #        node.phys_vars['h'] = self.thickness(node.coords())
 
             # indices based on a 2x2 submatrix of A for i,j
             if node1==node2:
-                # 1,1
-                ints[i, 0] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
-                    4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
-                # 2,2
-                ints[i, 1] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/6.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
-                    4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
+                div_factor = 6.0
             else:
-                # 1,1
-                ints[i, 0] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
-                    4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
-                # 2,2
-                ints[i, 1] = elm[1].area * (-elm[1].phys_vars[self.beta_name]**2/12.0 + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
-                    4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
+                div_factor = 12.0 
 
+
+            # 1,1
+            ints[i, 0] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2 / div_factor + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                4 * elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0] + elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1]))
+            # 2,2
+            ints[i, 1] = elm[1].area * (elm[1].phys_vars[self.beta_name]**2 / div_factor + elm[1].phys_vars['h'] * elm[1].phys_vars[self.nu] * (
+                4 * elm[1].dbases[n1b][1] * elm[1].dbases[n2b][1] + elm[1].dbases[n1b][0] * elm[1].dbases[n2b][0]))
 
             # 1,2
             ints[i, 2] = elm[1].area * elm[1].phys_vars[self.nu] * elm[1].phys_vars['h'] * (
@@ -367,13 +375,17 @@ class shallowShelf(Equation):
 
         if rhs:
             ints_rhs = np.zeros((self.max_nei, 2))
-            for i, elm in enumerate(elements):
-                ints_rhs[i, :] = - self.rho * self.g * elm[1].phys_vars['h'] * \
-                    elm[1].phys_vars['dzs'].ravel() * elm[1].area
+            if 'floating' in elm[1].phys_vars and elm[1].phys_vars['floating']:
+                for i, elm in enumerate(elements):
+                    ints_rhs[i, :] = self.rho * (1 - self.rho / self.rhow) * self.g * elm[1].phys_vars['h'] * elm[1].phys_vars['dzs'].ravel() * elm[1].area ** 2 
+            else:
+                for i, elm in enumerate(elements):
+                    ints_rhs[i, :] = self.rho * self.g * elm[1].phys_vars['h'] * \
+                        elm[1].phys_vars['dzs'].ravel() * elm[1].area ** 2 
 
 
             # return with rhs
-            return tuple(np.sum(ints,0))+tuple(np.sum(ints_rhs,0))
+            return tuple(np.sum(ints,0))+tuple(np.sum(ints_rhs,0))[::-1]
 
         # return if rhs is false
         return tuple(np.sum(ints,0))
