@@ -562,3 +562,73 @@ class Mesh:
             plt.show()
         if writefile is not None:
             plt.savefig(writefile)
+
+
+class matrix_mesh:
+    """A class for more efficient operations using the meshes.
+
+    Takes a gmsh file as its argument.
+    Note that it has bi-directional dictionaries so you can access the original numbering from gmsh,
+    but these are not used internally because they are slow.
+    """
+    def __init__(self, fn):
+        with open(fn, 'r') as f:
+            flines = f.readlines()
+        if not flines[0] == '$MeshFormat\n':
+            print('Unrecognized msh file')
+            return False
+        self.types = list(map(float, flines[1].split()))
+        self.numnodes = int(flines[4])
+        self.nodes=np.array([list(map(float,line[1:-1])) for line in map(str.split,flines[5:(5 + self.numnodes)])])
+
+        
+        if not flines[self.numnodes + 6] == '$Elements\n':
+            print('Unrecognized msh file')
+            return False
+        self.numels = int(flines[self.numnodes + 7])
+        elements = [
+            list(map(float,line)) 
+            for line in map(
+                str.split,flines[
+                    (8 + self.numnodes):(8 + self.numnodes +self.numels)])]
+        self.elements = np.zeros((self.numels,np.max([len(el) for el in elements])),dtype=int)
+        for i,element in enumerate(elements):
+            self.elements[i,0:len(element)] = element
+
+        return
+        for key in list(self.elements.keys()):
+            for attr in ['eltypes', 'physents', 'geoents', 'npartits']:
+                try:
+                    param = getattr(self.elements[key], attr)
+                except AttributeError:
+                    pass
+                try:
+                    paramlist = getattr(self, attr)
+                    if param not in paramlist:
+                        paramlist[param] = []
+                    paramlist[param].append(key)
+                except AttributeError:
+                    pass
+            for pos, node in enumerate(self.elements[key].nodes):
+                self.nodes[node].add_elm(key, pos)
+        flines = None
+        self.coords = np.r_[[node.coords()[0:2]
+                             for node in list(self.nodes.values())]]
+
+
+class bidict(dict):
+    def __init__(self, *args, **kwargs):
+        super(bidict, self).__init__(*args, **kwargs)
+        self.togmsh = {}
+        for key, value in self.iteritems():
+            self.togmsh.setdefault(value,[]).append(key) 
+
+    def __setitem__(self, key, value):
+        super(bidict, self).__setitem__(key, value)
+        self.togmsh.setdefault(value,[]).append(key)        
+
+    def __delitem__(self, key):
+        self.togmsh.setdefault(self[key],[]).remove(key)
+        if self[key] in self.togmsh and not self.togmsh[self[key]]: 
+            del self.togmsh[self[key]]
+        super(bidict, self).__delitem__(key)
